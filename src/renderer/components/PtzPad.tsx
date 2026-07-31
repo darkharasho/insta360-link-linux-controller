@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ZoomIn, ZoomOut, Home } from 'lucide-react'
 import type { Control } from '../../shared/types'
 import { Button } from './ui/button'
 import { Slider } from './ui/slider'
 import { cn } from '../lib/utils'
 import { holdSpeed } from './hold-ramp'
+import { joystickDelta } from './joystick'
 
 interface Props {
   controls: Control[]
@@ -77,6 +78,73 @@ export function PtzPad({ controls, setControl, className }: Props) {
 
   const disabled = !pan && !tilt
 
+  // --- Home knob: click to recenter, drag for proportional joystick motion. ---
+  /** Max knob travel from center, px (stays clear of the arrow buttons). */
+  const TRAVEL = 28
+  /** Pointer movement below this is a click (recenter), not a drag. */
+  const DRAG_THRESHOLD = 6
+  const [knobPos, setKnobPos] = useState({ x: 0, y: 0 })
+  const knobOffset = useRef({ x: 0, y: 0 })
+  const dragTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const dragState = useRef<{ startX: number; startY: number; dragging: boolean } | null>(null)
+
+  const stopDrag = useCallback(() => {
+    if (dragTimer.current) {
+      clearInterval(dragTimer.current)
+      dragTimer.current = null
+    }
+    dragState.current = null
+    knobOffset.current = { x: 0, y: 0 }
+    setKnobPos({ x: 0, y: 0 })
+  }, [])
+  useEffect(() => stopDrag, [stopDrag])
+
+  const dragTick = useCallback(() => {
+    const p = panRef.current
+    const t = tiltRef.current
+    const { dpan, dtilt } = joystickDelta(
+      knobOffset.current.x,
+      knobOffset.current.y,
+      TRAVEL,
+      p?.step ?? 3600,
+      t?.step ?? 3600,
+    )
+    if (p && dpan !== 0) setControl(p.name, clamp(Math.round(p.value + dpan), p.min, p.max))
+    if (t && dtilt !== 0) setControl(t.name, clamp(Math.round(t.value + dtilt), t.min, t.max))
+  }, [setControl])
+
+  const onKnobDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (disabled) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragState.current = { startX: e.clientX, startY: e.clientY, dragging: false }
+  }
+  const onKnobMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const s = dragState.current
+    if (!s) return
+    let dx = e.clientX - s.startX
+    let dy = e.clientY - s.startY
+    if (!s.dragging) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return
+      s.dragging = true
+      if (!dragTimer.current) dragTimer.current = setInterval(dragTick, REPEAT_MS)
+    }
+    const len = Math.hypot(dx, dy)
+    if (len > TRAVEL) {
+      dx *= TRAVEL / len
+      dy *= TRAVEL / len
+    }
+    knobOffset.current = { x: dx, y: dy }
+    setKnobPos({ x: dx, y: dy })
+  }
+  const onKnobUp = () => {
+    const wasDragging = dragState.current?.dragging ?? false
+    stopDrag()
+    if (!wasDragging) {
+      if (pan) setControl(pan.name, pan.default ?? 0)
+      if (tilt) setControl(tilt.name, tilt.default ?? 0)
+    }
+  }
+
   const arrow = (
     hold: { start: () => void; stop: () => void },
     icon: ReactNode,
@@ -112,18 +180,23 @@ export function PtzPad({ controls, setControl, className }: Props) {
         {arrow(right, <ArrowRight className="h-5 w-5" />, 'Pan right', 'top-1/2 right-2 -translate-y-1/2')}
         <button
           type="button"
-          aria-label="Recenter"
+          aria-label="Recenter (click) or drag to move"
+          title="Drag to move · click to recenter"
           disabled={disabled}
           className={cn(
-            'absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center',
-            'rounded-full border bg-secondary text-muted-foreground transition-all',
+            'absolute left-1/2 top-1/2 flex h-14 w-14 items-center justify-center touch-none',
+            'rounded-full border bg-secondary text-muted-foreground',
             'hover:text-foreground hover:border-primary hover:shadow-[0_0_0_3px] hover:shadow-primary/25',
             'disabled:pointer-events-none disabled:opacity-40 select-none',
+            dragState.current?.dragging
+              ? 'cursor-grabbing border-primary bg-primary/20 text-foreground'
+              : 'cursor-grab transition-all',
           )}
-          onClick={() => {
-            if (pan) setControl(pan.name, pan.default ?? 0)
-            if (tilt) setControl(tilt.name, tilt.default ?? 0)
-          }}
+          style={{ transform: `translate(calc(-50% + ${knobPos.x}px), calc(-50% + ${knobPos.y}px))` }}
+          onPointerDown={onKnobDown}
+          onPointerMove={onKnobMove}
+          onPointerUp={onKnobUp}
+          onPointerCancel={stopDrag}
         >
           <Home className="h-5 w-5" />
         </button>
