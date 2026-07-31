@@ -29,6 +29,11 @@ describe('parseListDevices', () => {
     const d = parseListDevices(raw)
     expect(d[0].captureNode.startsWith('/dev/video')).toBe(true)
   })
+  it('excludes v4l2loopback virtual cameras even when named Insta360', () => {
+    const d = parseListDevices(raw)
+    expect(d.map((x) => x.label)).not.toContain('Insta360 Link Filtered')
+    expect(d).toHaveLength(2)
+  })
 })
 
 describe('parseControls', () => {

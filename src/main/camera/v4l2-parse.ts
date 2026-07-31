@@ -7,6 +7,10 @@ export function parseListDevices(raw: string): Device[] {
     const lines = block.split('\n')
     const header = lines[0]
     if (!/Insta360 Link/i.test(header)) continue
+    // Never list virtual outputs as controllable cameras — our own filtered
+    // virtual camera is deliberately named "Insta360 Link Filtered" and would
+    // otherwise match the brand filter and get auto-selected.
+    if (header.includes('platform:v4l2loopback')) continue
     const idMatch = header.match(/\(([^)]*)\)\s*:/)
     const id = idMatch ? idMatch[1] : header.trim()
     const name = header.replace(/\s*\([^)]*\)\s*:\s*$/, '').trim()
