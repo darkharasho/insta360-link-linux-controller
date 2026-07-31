@@ -1,4 +1,4 @@
-import { useCallback, useRef, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ZoomIn, ZoomOut, Home } from 'lucide-react'
 import type { Control } from '../../shared/types'
 import { Button } from './ui/button'
@@ -26,6 +26,9 @@ function useHold(onTick: () => void) {
       timer.current = null
     }
   }, [])
+  // Clear any running interval if the component unmounts (or this hook
+  // instance is torn down) while a button is still held.
+  useEffect(() => stop, [stop])
   return { start, stop }
 }
 

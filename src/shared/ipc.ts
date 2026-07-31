@@ -1,5 +1,4 @@
-import type { Device, Control, AiFraming, Scene } from './types'
-import type { AppPreset } from '../main/camera/presets'
+import type { Device, Control, AiFraming, Scene, AppPreset } from './types'
 
 export const CH = {
   listDevices: 'camera:list',

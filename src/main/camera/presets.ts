@@ -1,4 +1,5 @@
-export interface AppPreset { name: string; values: Record<string, number> }
+import type { AppPreset } from '../../shared/types'
+export type { AppPreset }
 
 export class PresetStore {
   constructor(private backend: Map<string, AppPreset[]> = new Map()) {}

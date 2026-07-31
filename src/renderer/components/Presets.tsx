@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RotateCcw, Save, Trash2 } from 'lucide-react'
-import type { AppPreset } from '../../main/camera/presets'
-import type { Control, Device } from '../../shared/types'
+import type { AppPreset, Control, Device } from '../../shared/types'
 import { cameraApi } from '../api'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'

@@ -29,6 +29,9 @@ export function PreviewPane({ current, className }: Props) {
         probe.getTracks().forEach((t) => t.stop())
 
         const all = await navigator.mediaDevices.enumerateDevices()
+        // TODO(hardware): verify device-label matching with two Insta360 cameras (see Task 15).
+        // A plain substring match on `label` may bind the wrong camera when two
+        // similar Insta360 Link devices are attached; needs the real label format.
         const match = all.find(
           (d) => d.kind === 'videoinput' && d.label.includes(current.name),
         )
