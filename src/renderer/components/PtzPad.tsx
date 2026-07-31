@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react'
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ZoomIn, ZoomOut, Home } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ZoomIn, ZoomOut, Home } from 'lucide-react'
 import type { Control } from '../../shared/types'
 import { Button } from './ui/button'
 import { Slider } from './ui/slider'
 import { cn } from '../lib/utils'
+import { joystickDelta } from './joystick'
 
 interface Props {
   controls: Control[]
@@ -12,6 +13,8 @@ interface Props {
 }
 
 const REPEAT_MS = 80
+/** Usable knob travel from center, px (matches the pad's rendered size). */
+const RADIUS = 44
 
 function useHold(onTick: () => void) {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -38,6 +41,96 @@ function clamp(v: number, min?: number, max?: number) {
   return v
 }
 
+function Joystick({
+  pan,
+  tilt,
+  setControl,
+  disabled,
+}: {
+  pan?: Control
+  tilt?: Control
+  setControl: (name: string, value: number) => void
+  disabled: boolean
+}) {
+  const [knob, setKnob] = useState({ x: 0, y: 0 })
+  const offset = useRef({ x: 0, y: 0 })
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Latest control descriptors for the interval callback (state in a closure
+  // would go stale between renders while the optimistic values update).
+  const panRef = useRef(pan)
+  const tiltRef = useRef(tilt)
+  panRef.current = pan
+  tiltRef.current = tilt
+
+  const stop = useCallback(() => {
+    if (timer.current) {
+      clearInterval(timer.current)
+      timer.current = null
+    }
+    offset.current = { x: 0, y: 0 }
+    setKnob({ x: 0, y: 0 })
+  }, [])
+  useEffect(() => stop, [stop])
+
+  const tick = useCallback(() => {
+    const p = panRef.current
+    const t = tiltRef.current
+    const { dpan, dtilt } = joystickDelta(
+      offset.current.x,
+      offset.current.y,
+      RADIUS,
+      p?.step ?? 3600,
+      t?.step ?? 3600,
+    )
+    if (p && dpan !== 0) setControl(p.name, clamp(Math.round(p.value + dpan), p.min, p.max))
+    if (t && dtilt !== 0) setControl(t.name, clamp(Math.round(t.value + dtilt), t.min, t.max))
+  }, [setControl])
+
+  const updateFromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const dx = e.clientX - (rect.left + rect.width / 2)
+    const dy = e.clientY - (rect.top + rect.height / 2)
+    const len = Math.hypot(dx, dy)
+    const s = len > RADIUS ? RADIUS / len : 1
+    offset.current = { x: dx * s, y: dy * s }
+    setKnob(offset.current)
+  }
+
+  return (
+    <div
+      role="slider"
+      aria-label="Pan and tilt joystick"
+      className={cn(
+        'relative h-28 w-28 shrink-0 touch-none select-none rounded-full border bg-muted/60',
+        disabled ? 'opacity-40' : 'cursor-grab active:cursor-grabbing',
+      )}
+      onPointerDown={(e) => {
+        if (disabled) return
+        e.currentTarget.setPointerCapture(e.pointerId)
+        updateFromPointer(e)
+        if (!timer.current) {
+          tick()
+          timer.current = setInterval(tick, REPEAT_MS)
+        }
+      }}
+      onPointerMove={(e) => {
+        if (!disabled && timer.current) updateFromPointer(e)
+      }}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+    >
+      {/* crosshair */}
+      <div className="pointer-events-none absolute left-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-border" />
+      <div className="pointer-events-none absolute top-1/2 left-2 right-2 h-px -translate-y-1/2 bg-border" />
+      {/* knob */}
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 h-9 w-9 rounded-full bg-primary shadow-md transition-transform duration-75"
+        style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
+      />
+    </div>
+  )
+}
+
 export function PtzPad({ controls, setControl, className }: Props) {
   const pan = controls.find((c) => c.name === 'pan_absolute')
   const tilt = controls.find((c) => c.name === 'tilt_absolute')
@@ -52,61 +145,27 @@ export function PtzPad({ controls, setControl, className }: Props) {
     [setControl],
   )
 
-  const left = useHold(() => nudge(pan, -1))
-  const right = useHold(() => nudge(pan, 1))
-  const up = useHold(() => nudge(tilt, 1))
-  const down = useHold(() => nudge(tilt, -1))
   const zoomIn = useHold(() => nudge(zoom, 1))
   const zoomOut = useHold(() => nudge(zoom, -1))
 
   const disabled = !pan && !tilt
 
-  const dirBtn = (
-    hold: { start: () => void; stop: () => void },
-    icon: ReactNode,
-    label: string,
-    extraClass = '',
-  ) => (
-    <Button
-      variant="secondary"
-      size="icon"
-      disabled={disabled}
-      aria-label={label}
-      className={cn('select-none', extraClass)}
-      onMouseDown={hold.start}
-      onMouseUp={hold.stop}
-      onMouseLeave={hold.stop}
-      onTouchStart={hold.start}
-      onTouchEnd={hold.stop}
-    >
-      {icon}
-    </Button>
-  )
-
   return (
     <div className={cn('flex items-center gap-4 rounded-xl border bg-card/80 p-3 backdrop-blur', className)}>
-      <div className="grid grid-cols-3 grid-rows-3 gap-1">
-        <div />
-        {dirBtn(up, <ArrowUp className="h-4 w-4" />, 'Tilt up')}
-        <div />
-        {dirBtn(left, <ArrowLeft className="h-4 w-4" />, 'Pan left')}
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Center"
-          disabled={disabled}
-          onClick={() => {
-            if (pan) setControl(pan.name, pan.default ?? 0)
-            if (tilt) setControl(tilt.name, tilt.default ?? 0)
-          }}
-        >
-          <Home className="h-4 w-4" />
-        </Button>
-        {dirBtn(right, <ArrowRight className="h-4 w-4" />, 'Pan right')}
-        <div />
-        {dirBtn(down, <ArrowDown className="h-4 w-4" />, 'Tilt down')}
-        <div />
-      </div>
+      <Joystick pan={pan} tilt={tilt} setControl={setControl} disabled={disabled} />
+
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Center"
+        disabled={disabled}
+        onClick={() => {
+          if (pan) setControl(pan.name, pan.default ?? 0)
+          if (tilt) setControl(tilt.name, tilt.default ?? 0)
+        }}
+      >
+        <Home className="h-4 w-4" />
+      </Button>
 
       <div className="flex flex-1 items-center gap-2">
         <Button

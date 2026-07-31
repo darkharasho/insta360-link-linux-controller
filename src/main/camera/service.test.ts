@@ -5,7 +5,7 @@ import { PresetStore } from './presets'
 function makeService() {
   const v4l2 = { listDevices: vi.fn(), getControls: vi.fn(), setControl: vi.fn().mockResolvedValue(undefined) } as any
   const xu = { send: vi.fn().mockResolvedValue(undefined) } as any
-  const svc = new CameraService(v4l2, xu, new PresetStore())
+  const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 0 })
   return { svc, v4l2, xu }
 }
 
@@ -30,16 +30,27 @@ describe('CameraService', () => {
     await svc.reset('/dev/video1')
     expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'reset' })
   })
-  it('applies a scene-mode preset: image controls + the scene command, no position replay', async () => {
+  it('applies a scene-mode preset: image controls, scene command, then zoom replay — no pan/tilt', async () => {
     const { svc, v4l2, xu } = makeService()
-    v4l2.getControls.mockResolvedValue([])
+    v4l2.getControls.mockResolvedValue([
+      { name: 'zoom_absolute', kind: 'int', value: 100, min: 100, max: 400, step: 1, inactive: false },
+    ])
     svc.saveAppPreset('cam1', 'Desk', { brightness: 60, pan_absolute: 7200, zoom_absolute: 250 }, 'deskview')
     const result = await svc.applyAppPreset('/dev/video1', 'cam1', 'Desk')
 
-    // The scene re-aims the gimbal itself: stale pan/tilt/zoom must NOT be replayed.
-    const names = v4l2.setControl.mock.calls.map((c: unknown[]) => c[1])
-    expect(names).toEqual(['brightness'])
+    // The scene aims the gimbal itself, so stale pan/tilt are never replayed —
+    // but the scene transition also resets zoom, so the saved zoom IS replayed
+    // (nudged) after the scene command.
+    const calls = v4l2.setControl.mock.calls.map((c: unknown[]) => [c[1], c[2]])
+    expect(calls).toEqual([
+      ['brightness', 60],
+      ['zoom_absolute', 249],
+      ['zoom_absolute', 250],
+    ])
     expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'scene', scene: 'deskview' })
+    const sceneOrder = xu.send.mock.invocationCallOrder[0]
+    const zoomOrder = v4l2.setControl.mock.invocationCallOrder[1]
+    expect(zoomOrder).toBeGreaterThan(sceneOrder)
     expect(result).toMatchObject({ failed: [], mode: 'deskview' })
   })
   it('applies an AI preset: position replay, then ai on + framing', async () => {

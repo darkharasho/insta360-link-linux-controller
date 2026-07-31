@@ -4,7 +4,17 @@ import type { XuAdapter } from './xu.js'
 import { PresetStore, type AppPreset } from './presets.js'
 
 export class CameraService {
-  constructor(private v4l2: V4l2Adapter, private xu: XuAdapter, private presets: PresetStore) {}
+  /** Time to let a scene transition (DeskView etc.) finish before replaying zoom. */
+  private sceneSettleMs: number
+
+  constructor(
+    private v4l2: V4l2Adapter,
+    private xu: XuAdapter,
+    private presets: PresetStore,
+    opts: { sceneSettleMs?: number } = {},
+  ) {
+    this.sceneSettleMs = opts.sceneSettleMs ?? 1500
+  }
 
   listDevices(): Promise<Device[]> {
     return this.v4l2.listDevices()
@@ -79,21 +89,29 @@ export class CameraService {
     // pair always differs from the cache, so both writes reach the hardware
     // and the gimbal really ends up at the saved position.
     //
-    // Scene-mode presets skip the position replay entirely: the scene command
-    // aims the gimbal itself, and the cached pan/tilt/zoom captured while a
-    // scene was active are stale by definition.
+    // Scene-mode presets skip the pan/tilt replay: the scene command aims the
+    // gimbal itself, and pan/tilt cached while a scene was active are stale by
+    // definition. Zoom is different — the user can zoom manually on top of a
+    // scene, so the saved zoom is replayed after the scene settles (the scene
+    // transition resets zoom to its own default).
     const POSITION = new Set(['pan_absolute', 'tilt_absolute', 'zoom_absolute'])
     const isScenePreset = mode !== 'normal' && mode !== 'ai'
     const ranges = new Map<string, Control>()
-    if (!isScenePreset) {
-      try {
-        for (const c of await this.v4l2.getControls(dev)) ranges.set(c.name, c)
-      } catch (err) {
-        console.error('applyAppPreset: failed to read control ranges', err)
-      }
+    try {
+      for (const c of await this.v4l2.getControls(dev)) ranges.set(c.name, c)
+    } catch (err) {
+      console.error('applyAppPreset: failed to read control ranges', err)
     }
 
     const failed: string[] = []
+    const setNudged = async (k: string, v: number) => {
+      const c = ranges.get(k)
+      const step = Math.max(1, c?.step ?? 1)
+      const nudge = c?.min !== undefined && v - step < c.min ? v + step : v - step
+      await this.v4l2.setControl(dev, k, nudge)
+      await this.v4l2.setControl(dev, k, v)
+    }
+
     const entries = Object.entries(preset.values).filter(([k]) => !(isScenePreset && POSITION.has(k)))
     // Image controls first, then pan/tilt, then zoom last (zoom belongs to the
     // final framing, after the gimbal has been repositioned).
@@ -101,13 +119,8 @@ export class CameraService {
     entries.sort(([a], [b]) => rank(a) - rank(b))
     for (const [k, v] of entries) {
       try {
-        if (POSITION.has(k)) {
-          const c = ranges.get(k)
-          const step = Math.max(1, c?.step ?? 1)
-          const nudge = c?.min !== undefined && v - step < c.min ? v + step : v - step
-          await this.v4l2.setControl(dev, k, nudge)
-        }
-        await this.v4l2.setControl(dev, k, v)
+        if (POSITION.has(k)) await setNudged(k, v)
+        else await this.v4l2.setControl(dev, k, v)
       } catch (err) {
         failed.push(k)
         console.error(`applyAppPreset: failed to set ${k}=${v}`, err)
@@ -119,6 +132,17 @@ export class CameraService {
     try {
       if (isScenePreset) {
         await this.xu.send(dev, { kind: 'scene', scene: mode })
+        // Re-apply the saved zoom on top of the scene once its transition has
+        // settled (the transition drives zoom internally, outside the cache).
+        if (typeof preset.values.zoom_absolute === 'number') {
+          if (this.sceneSettleMs > 0) await new Promise((r) => setTimeout(r, this.sceneSettleMs))
+          try {
+            await setNudged('zoom_absolute', preset.values.zoom_absolute)
+          } catch (err) {
+            failed.push('zoom_absolute')
+            console.error('applyAppPreset: failed to re-apply zoom after scene', err)
+          }
+        }
       } else if (mode === 'ai') {
         await this.xu.send(dev, { kind: 'ai', on: true })
         if (preset.framing) await this.xu.send(dev, { kind: 'framing', mode: preset.framing })
