@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AlertCircle, X } from 'lucide-react'
 import { useCamera } from './useCamera'
 import { TitleBar } from './components/TitleBar'
@@ -20,6 +21,10 @@ export default function App() {
   } = useCamera()
 
   const connected = !!current
+  // Applying a preset forces the camera to Normal mode (the service silences
+  // AI/scene first); bumping the epoch remounts ModeControl so its local
+  // selection resets to Normal instead of showing a stale mode.
+  const [modeEpoch, setModeEpoch] = useState(0)
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -60,7 +65,7 @@ export default function App() {
 
             <TabsContent value="mode">
               <ModeControl
-                key={current?.id ?? 'none'}
+                key={`${current?.id ?? 'none'}-${modeEpoch}`}
                 setAi={setAi}
                 setFraming={setFraming}
                 setScene={setScene}
@@ -74,6 +79,7 @@ export default function App() {
               <Presets
                 device={current}
                 captureCurrent={captureCurrent}
+                onApplied={() => setModeEpoch((e) => e + 1)}
                 listAppPresets={listAppPresets}
                 saveAppPreset={saveAppPreset}
                 applyAppPreset={applyAppPreset}
