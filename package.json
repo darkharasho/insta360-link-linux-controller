@@ -4,6 +4,11 @@
   "description": "Control Insta360 Link webcams on Linux",
   "main": "dist/main/main.js",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/darkharasho/insta360-link-linux-controller.git"
+  },
+  "author": "darkharasho",
   "scripts": {
     "dev": "vite",
     "build:renderer": "vite build",
