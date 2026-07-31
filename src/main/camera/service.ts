@@ -30,14 +30,6 @@ export class CameraService {
     return this.xu.send(dev, { kind: 'scene', scene })
   }
 
-  recallHwPreset(dev: string, slot: number): Promise<void> {
-    return this.xu.send(dev, { kind: 'preset-recall', slot })
-  }
-
-  saveHwPreset(dev: string, slot: number): Promise<void> {
-    return this.xu.send(dev, { kind: 'preset-save', slot })
-  }
-
   reset(dev: string): Promise<void> {
     return this.xu.send(dev, { kind: 'reset' })
   }
@@ -54,11 +46,18 @@ export class CameraService {
     this.presets.remove(deviceId, name)
   }
 
-  async applyAppPreset(dev: string, deviceId: string, name: string): Promise<void> {
+  async applyAppPreset(dev: string, deviceId: string, name: string): Promise<{ failed: string[] }> {
     const preset = this.presets.list(deviceId).find((p) => p.name === name)
     if (!preset) throw new Error(`unknown preset: ${name}`)
+    const failed: string[] = []
     for (const [k, v] of Object.entries(preset.values)) {
-      await this.v4l2.setControl(dev, k, v)
+      try {
+        await this.v4l2.setControl(dev, k, v)
+      } catch (err) {
+        failed.push(k)
+        console.error(`applyAppPreset: failed to set ${k}=${v}`, err)
+      }
     }
+    return { failed }
   }
 }

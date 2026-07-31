@@ -7,8 +7,6 @@ export const CH = {
   setAi: 'camera:setAi',
   setFraming: 'camera:setFraming',
   setScene: 'camera:setScene',
-  recallHwPreset: 'camera:recallHwPreset',
-  saveHwPreset: 'camera:saveHwPreset',
   reset: 'camera:reset',
   listAppPresets: 'camera:listAppPresets',
   saveAppPreset: 'camera:saveAppPreset',
@@ -23,8 +21,6 @@ export interface CameraApi {
   setAi(dev: string, on: boolean): Promise<void>
   setFraming(dev: string, mode: AiFraming): Promise<void>
   setScene(dev: string, scene: Scene): Promise<void>
-  recallHwPreset(dev: string, slot: number): Promise<void>
-  saveHwPreset(dev: string, slot: number): Promise<void>
   reset(dev: string): Promise<void>
   listAppPresets(deviceId: string): Promise<AppPreset[]>
   saveAppPreset(deviceId: string, name: string, values: Record<string, number>): Promise<void>

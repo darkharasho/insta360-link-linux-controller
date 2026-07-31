@@ -7,6 +7,8 @@ files:
 extraResources:
   - from: native/link-xu/link-xu
     to: link-xu
+  - from: packaging/99-insta360-link.rules
+    to: 99-insta360-link.rules
 linux:
   target: [AppImage]
   category: Utility

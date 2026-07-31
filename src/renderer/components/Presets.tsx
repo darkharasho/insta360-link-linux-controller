@@ -1,21 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RotateCcw, Save, Trash2 } from 'lucide-react'
 import type { AppPreset, Control, Device } from '../../shared/types'
-import { cameraApi } from '../api'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 
 interface Props {
   device: Device | null
   controls: Control[]
-  recallHwPreset: (slot: number) => void
-  reset: () => void
-  refresh: () => void
+  listAppPresets: () => Promise<AppPreset[]>
+  saveAppPreset: (name: string, values: Record<string, number>) => Promise<boolean>
+  applyAppPreset: (name: string) => Promise<boolean>
+  removeAppPreset: (name: string) => Promise<boolean>
+  reset: () => Promise<boolean>
 }
 
-const HW_SLOTS = [1, 2, 3, 4, 5, 6]
-
-export function Presets({ device, controls, recallHwPreset, reset, refresh }: Props) {
+export function Presets({ device, controls, listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset, reset }: Props) {
   const [appPresets, setAppPresets] = useState<AppPreset[]>([])
   const [name, setName] = useState('')
 
@@ -24,50 +23,39 @@ export function Presets({ device, controls, recallHwPreset, reset, refresh }: Pr
       setAppPresets([])
       return
     }
-    setAppPresets(await cameraApi.listAppPresets(device.id))
-  }, [device])
+    setAppPresets(await listAppPresets())
+  }, [device, listAppPresets])
 
   useEffect(() => { loadAppPresets() }, [loadAppPresets])
 
   const save = async () => {
     if (!device || !name.trim()) return
-    const values = Object.fromEntries(controls.map((c) => [c.name, c.value]))
-    await cameraApi.saveAppPreset(device.id, name.trim(), values)
-    setName('')
-    loadAppPresets()
+    // Only capture active controls: inactive/read-only controls (e.g. a menu
+    // control disabled because a related control is off) don't reflect a
+    // meaningful position and shouldn't be replayed on apply.
+    const values = Object.fromEntries(
+      controls.filter((c) => !c.inactive).map((c) => [c.name, c.value]),
+    )
+    const ok = await saveAppPreset(name.trim(), values)
+    if (ok) {
+      setName('')
+      loadAppPresets()
+    }
   }
 
   const apply = async (p: AppPreset) => {
     if (!device) return
-    await cameraApi.applyAppPreset(device.captureNode, device.id, p.name)
-    refresh()
+    await applyAppPreset(p.name)
   }
 
   const remove = async (p: AppPreset) => {
     if (!device) return
-    await cameraApi.removeAppPreset(device.id, p.name)
-    loadAppPresets()
+    const ok = await removeAppPreset(p.name)
+    if (ok) loadAppPresets()
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium">Hardware presets</p>
-        <div className="grid grid-cols-6 gap-1.5">
-          {HW_SLOTS.map((slot) => (
-            <Button
-              key={slot}
-              variant="secondary"
-              size="sm"
-              disabled={!device}
-              onClick={() => recallHwPreset(slot)}
-            >
-              {slot}
-            </Button>
-          ))}
-        </div>
-      </div>
-
       <div className="flex flex-col gap-2">
         <p className="text-sm font-medium">App presets</p>
         <div className="flex gap-1.5">
@@ -105,9 +93,9 @@ export function Presets({ device, controls, recallHwPreset, reset, refresh }: Pr
         )}
       </div>
 
-      <Button variant="outline" disabled={!device} onClick={reset} className="gap-2">
+      <Button variant="outline" disabled={!device} onClick={() => reset()} className="gap-2">
         <RotateCcw className="h-4 w-4" />
-        Reset to defaults
+        Recenter gimbal
       </Button>
     </div>
   )

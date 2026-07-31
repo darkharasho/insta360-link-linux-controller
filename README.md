@@ -20,13 +20,18 @@ wrapped in a polished Electron UI.
 ### Device permissions (udev rule)
 
 The app talks to the camera over `/dev/video*` and USB, which normally
-require root. Install the bundled udev rule so your user can access the
-camera without `sudo`:
+require root. The AppImage bundles the udev rule as a resource; extract it
+and install it so your user can access the camera without `sudo`:
 
 ```bash
-sudo cp packaging/99-insta360-link.rules /etc/udev/rules.d/
+./Insta360-Link-Controller-*.AppImage --appimage-extract resources/99-insta360-link.rules
+sudo cp squashfs-root/resources/99-insta360-link.rules /etc/udev/rules.d/
 sudo udevadm control --reload && sudo udevadm trigger
+rm -rf squashfs-root
 ```
+
+(If you built from a repo checkout instead, the same file lives at
+`packaging/99-insta360-link.rules`.)
 
 Unplug and replug the camera (or reboot) after installing the rule.
 

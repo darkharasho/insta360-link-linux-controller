@@ -14,7 +14,7 @@ describe('ipc channels', () => {
     const service = {
       listDevices: vi.fn(), getSnapshot: vi.fn(), setControl: vi.fn(),
       setAi: vi.fn(), setFraming: vi.fn(), setScene: vi.fn(),
-      recallHwPreset: vi.fn(), saveHwPreset: vi.fn(), reset: vi.fn(),
+      reset: vi.fn(),
       listAppPresets: vi.fn(), saveAppPreset: vi.fn(), applyAppPreset: vi.fn(), removeAppPreset: vi.fn(),
     }
     registerIpc(ipcMain as any, service as any)
@@ -27,7 +27,7 @@ describe('ipc channels', () => {
     // register a minimal service; others default to no-op
     registerIpc(ipcMain as any, { ...service,
       listDevices: vi.fn(), getSnapshot: vi.fn(), setAi: vi.fn(), setFraming: vi.fn(),
-      setScene: vi.fn(), recallHwPreset: vi.fn(), saveHwPreset: vi.fn(), reset: vi.fn(),
+      setScene: vi.fn(), reset: vi.fn(),
       listAppPresets: vi.fn(), saveAppPreset: vi.fn(), applyAppPreset: vi.fn(), removeAppPreset: vi.fn() })
     await handlers[CH.setControl]({}, '/dev/video1', 'zoom_absolute', 300)
     expect(service.setControl).toHaveBeenCalledWith('/dev/video1', 'zoom_absolute', 300)

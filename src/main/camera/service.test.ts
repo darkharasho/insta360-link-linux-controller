@@ -25,16 +25,6 @@ describe('CameraService', () => {
     await svc.setFraming('/dev/video1', 'full')
     expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'framing', mode: 'full' })
   })
-  it('routes preset recall to xu adapter', async () => {
-    const { svc, xu } = makeService()
-    await svc.recallHwPreset('/dev/video1', 2)
-    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'preset-recall', slot: 2 })
-  })
-  it('routes preset save to xu adapter', async () => {
-    const { svc, xu } = makeService()
-    await svc.saveHwPreset('/dev/video1', 4)
-    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'preset-save', slot: 4 })
-  })
   it('routes reset to xu adapter', async () => {
     const { svc, xu } = makeService()
     await svc.reset('/dev/video1')
@@ -50,5 +40,16 @@ describe('CameraService', () => {
   it('throws applying an unknown preset', async () => {
     const { svc } = makeService()
     await expect(svc.applyAppPreset('/dev/video1', 'cam1', 'Nope')).rejects.toThrow()
+  })
+  it('continues applying remaining controls when one setControl fails', async () => {
+    const { svc, v4l2 } = makeService()
+    svc.saveAppPreset('cam1', 'Desk', { zoom_absolute: 250, pan_absolute: 0, tilt_absolute: 10 })
+    v4l2.setControl
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('EIO'))
+      .mockResolvedValueOnce(undefined)
+    const result = await svc.applyAppPreset('/dev/video1', 'cam1', 'Desk')
+    expect(v4l2.setControl).toHaveBeenCalledTimes(3)
+    expect(result.failed).toEqual(['pan_absolute'])
   })
 })

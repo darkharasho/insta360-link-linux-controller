@@ -3,30 +3,69 @@ import type { Device, Control, AiFraming, Scene } from '../shared/types'
 import { cameraApi } from './api'
 import { makeDebouncer } from './debounce'
 
+function describeError(label: string, err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err)
+  return `${label} failed: ${detail}`
+}
+
 export function useCamera() {
   const [devices, setDevices] = useState<Device[]>([])
   const [current, setCurrent] = useState<Device | null>(null)
   const [controls, setControls] = useState<Control[]>([])
+  const [lastError, setLastError] = useState<string | null>(null)
+
+  const reportError = useCallback((label: string, err: unknown) => {
+    setLastError(describeError(label, err))
+  }, [])
+
+  const dismissError = useCallback(() => setLastError(null), [])
 
   const refreshDevices = useCallback(async () => {
-    const d = await cameraApi.listDevices()
-    setDevices(d)
-    setCurrent((c) => c ?? d[0] ?? null)
-  }, [])
+    try {
+      const d = await cameraApi.listDevices()
+      setDevices(d)
+      setCurrent((c) => c ?? d[0] ?? null)
+    } catch (err) {
+      reportError('List devices', err)
+    }
+  }, [reportError])
 
   const refresh = useCallback(async () => {
     if (!current) return
-    setControls(await cameraApi.getSnapshot(current.captureNode))
-  }, [current])
+    try {
+      setControls(await cameraApi.getSnapshot(current.captureNode))
+    } catch (err) {
+      reportError('Read camera state', err)
+    }
+  }, [current, reportError])
 
   useEffect(() => { refreshDevices() }, [refreshDevices])
   useEffect(() => { refresh() }, [refresh])
 
+  // Generic wrapper for mutating IPC calls: awaits the call, surfaces any
+  // rejection as a user-visible error instead of an unhandled promise
+  // rejection, and returns whether the call succeeded so callers can
+  // reconcile optimistic UI state.
+  const runMutation = useCallback(async (label: string, fn: () => Promise<unknown>) => {
+    try {
+      await fn()
+      return true
+    } catch (err) {
+      reportError(label, err)
+      return false
+    }
+  }, [reportError])
+
   const debouncedWrite = useMemo(
     () => makeDebouncer((name: string, value: number) => {
-      if (current) cameraApi.setControl(current.captureNode, name, value)
+      if (!current) return
+      cameraApi.setControl(current.captureNode, name, value).catch((err) => {
+        reportError('Set control', err)
+        // Reconcile optimistic UI: re-read the actual hardware state.
+        refresh()
+      })
     }, 60),
-    [current],
+    [current, reportError, refresh],
   )
 
   const setControl = useCallback((name: string, value: number) => {
@@ -35,14 +74,26 @@ export function useCamera() {
   }, [debouncedWrite])
 
   const dev = current?.captureNode ?? ''
+  const deviceId = current?.id ?? ''
+
   return {
     devices, current, controls,
     selectDevice: setCurrent, refresh,
     setControl,
-    setAi: (on: boolean) => cameraApi.setAi(dev, on),
-    setFraming: (m: AiFraming) => cameraApi.setFraming(dev, m),
-    setScene: (s: Scene) => cameraApi.setScene(dev, s),
-    recallHwPreset: (slot: number) => cameraApi.recallHwPreset(dev, slot),
-    reset: () => cameraApi.reset(dev),
+    setAi: (on: boolean) => runMutation('Set AI tracking', () => cameraApi.setAi(dev, on)),
+    setFraming: (m: AiFraming) => runMutation('Set framing', () => cameraApi.setFraming(dev, m)),
+    setScene: (s: Scene) => runMutation('Set scene', () => cameraApi.setScene(dev, s)),
+    reset: () => runMutation('Recenter gimbal', () => cameraApi.reset(dev)),
+    listAppPresets: () => cameraApi.listAppPresets(deviceId).catch((err) => { reportError('Load presets', err); return [] }),
+    saveAppPreset: (name: string, values: Record<string, number>) =>
+      runMutation('Save preset', () => cameraApi.saveAppPreset(deviceId, name, values)),
+    applyAppPreset: (name: string) =>
+      runMutation('Apply preset', () => cameraApi.applyAppPreset(dev, deviceId, name)).then((ok) => {
+        if (ok) refresh()
+        return ok
+      }),
+    removeAppPreset: (name: string) =>
+      runMutation('Delete preset', () => cameraApi.removeAppPreset(deviceId, name)),
+    lastError, dismissError,
   }
 }

@@ -9,7 +9,7 @@ const defaultRunner: Runner = async (bin, argv) => (await pExecFile(bin, argv)).
 export class XuAdapter {
   constructor(private binPath: string, private run: Runner = defaultRunner) {}
   async send(dev: string, cmd: XuCommand): Promise<void> {
-    const argv = xuArgv(dev, cmd) // throws before spawn on invalid input
+    const argv = xuArgv(dev, cmd)
     await this.run(this.binPath, argv)
   }
 }

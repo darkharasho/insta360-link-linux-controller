@@ -121,7 +121,6 @@ static void usage(void) {
     printf("usage: link-xu <dev> <command>\n"
            "  ai on|off\n  framing head|half|full\n"
            "  scene normal|deskview|whiteboard|overhead\n"
-           "  preset recall|save <1-6>   (software-only; not an XU op)\n"
            "  reset\n");
 }
 
@@ -163,19 +162,6 @@ int main(int argc, char **argv) {
             return xu_set_mode(dev, XU_MODE_OVERHEAD, XU_FLAG_OVERHEAD);
         fprintf(stderr, "scene expects normal|deskview|whiteboard|overhead\n");
         return 1;
-    }
-
-    /* Presets: no authoritative XU selector exists (see file header).
-       The original project implements these purely in software, and this app
-       does likewise via its app-side preset store. Do not fabricate an ioctl. */
-    if (strcmp(cmd, "preset") == 0 && argc == 5) {
-        int slot = atoi(argv[4]);
-        if (slot < 1 || slot > 6) { fprintf(stderr, "slot out of range\n"); return 1; }
-        fprintf(stderr,
-                "preset %s: the Insta360 Link has no hardware XU preset control; "
-                "presets are handled app-side (software pan/tilt/zoom). "
-                "This is not an XU operation.\n", argv[3]);
-        return 4; /* distinct exit code: unsupported-at-XU-layer, not a protocol error */
     }
 
     /* Gimbal reset: Selector 14, single byte 0x01.
