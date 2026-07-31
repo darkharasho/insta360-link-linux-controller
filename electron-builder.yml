@@ -1,0 +1,16 @@
+appId: com.insta360linkcontroller.app
+productName: Insta360 Link Controller
+directories:
+  output: release
+files:
+  - dist/**
+extraResources:
+  - from: native/link-xu/link-xu
+    to: link-xu
+linux:
+  target: [AppImage]
+  category: Utility
+  executableName: insta360-link-controller
+publish:
+  provider: github
+  releaseType: release

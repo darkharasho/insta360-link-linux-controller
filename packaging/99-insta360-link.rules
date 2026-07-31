@@ -1,0 +1,2 @@
+# Grant access to Insta360 Link cameras. Reload: sudo udevadm control --reload && sudo udevadm trigger
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="2e1a", MODE="0660", TAG+="uaccess"
