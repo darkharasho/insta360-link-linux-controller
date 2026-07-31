@@ -1,16 +1,10 @@
 import type { Control } from '../../shared/types'
-import { widgetFor } from './widget'
+import { widgetFor, labelFor } from './widget'
 import { Slider } from './ui/slider'
 import { Switch } from './ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
 
 const PTZ_NAMES = new Set(['pan_absolute', 'tilt_absolute', 'zoom_absolute'])
-
-function label(name: string) {
-  return name
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-}
 
 interface Props {
   controls: Control[]
@@ -29,7 +23,7 @@ export function ImageSettings({ controls, setControl }: Props) {
       {rows.map((c) => (
         <div key={c.name} className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
-            <span className={c.inactive ? 'text-sm text-muted-foreground' : 'text-sm'}>{label(c.name)}</span>
+            <span className={c.inactive ? 'text-sm text-muted-foreground' : 'text-sm'}>{labelFor(c.name)}</span>
             {widgetFor(c) === 'switch' && (
               <Switch
                 checked={c.value !== 0}

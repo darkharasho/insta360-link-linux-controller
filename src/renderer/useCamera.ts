@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Device, Control, AiFraming, Scene, CameraMode } from '../shared/types'
 import { cameraApi } from './api'
 import { makeDebouncer } from './debounce'
@@ -66,14 +66,27 @@ export function useCamera() {
     }
   }, [reportError])
 
+  // The debouncer's callback closes over stale state; a ref keeps the latest
+  // control descriptors reachable from inside it.
+  const controlsRef = useRef<Control[]>([])
+  useEffect(() => { controlsRef.current = controls }, [controls])
+
   const debouncedWrite = useMemo(
     () => makeDebouncer((name: string, value: number) => {
       if (!current) return
-      cameraApi.setControl(current.captureNode, name, value).catch((err) => {
-        reportError('Set control', err)
-        // Reconcile optimistic UI: re-read the actual hardware state.
-        refresh()
-      })
+      cameraApi.setControl(current.captureNode, name, value)
+        .then(() => {
+          // Toggling a bool/menu control can flip other controls' inactive
+          // flag (auto focus gates manual focus, auto WB gates temperature) —
+          // re-read so the dependent widgets enable/disable immediately.
+          const kind = controlsRef.current.find((c) => c.name === name)?.kind
+          if (kind === 'bool' || kind === 'menu') refresh()
+        })
+        .catch((err) => {
+          reportError('Set control', err)
+          // Reconcile optimistic UI: re-read the actual hardware state.
+          refresh()
+        })
     }, 60),
     [current, reportError, refresh],
   )
