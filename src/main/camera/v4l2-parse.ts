@@ -1,4 +1,4 @@
-import type { Device, Control } from '../../shared/types'
+import type { Device, Control } from '../../shared/types.js'
 
 export function parseListDevices(raw: string): Device[] {
   const blocks = raw.split(/\n(?=\S)/) // split on non-indented header lines

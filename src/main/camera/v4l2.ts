@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { Device, Control } from '../../shared/types'
-import { parseListDevices, parseControls } from './v4l2-parse'
-import { listDevicesArgv, listControlsArgv, setControlArgv } from './v4l2-argv'
+import type { Device, Control } from '../../shared/types.js'
+import { parseListDevices, parseControls } from './v4l2-parse.js'
+import { listDevicesArgv, listControlsArgv, setControlArgv } from './v4l2-argv.js'
 
 const pExecFile = promisify(execFile)
 export type Runner = (bin: string, argv: string[]) => Promise<string>

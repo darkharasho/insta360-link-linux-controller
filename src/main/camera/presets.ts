@@ -1,4 +1,4 @@
-import type { AppPreset } from '../../shared/types'
+import type { AppPreset } from '../../shared/types.js'
 export type { AppPreset }
 
 export class PresetStore {

@@ -1,7 +1,7 @@
-import type { Device, Control, AiFraming, Scene } from '../../shared/types'
-import type { V4l2Adapter } from './v4l2'
-import type { XuAdapter } from './xu'
-import { PresetStore, type AppPreset } from './presets'
+import type { Device, Control, AiFraming, Scene } from '../../shared/types.js'
+import type { V4l2Adapter } from './v4l2.js'
+import type { XuAdapter } from './xu.js'
+import { PresetStore, type AppPreset } from './presets.js'
 
 export class CameraService {
   constructor(private v4l2: V4l2Adapter, private xu: XuAdapter, private presets: PresetStore) {}

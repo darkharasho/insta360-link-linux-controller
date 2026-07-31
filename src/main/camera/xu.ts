@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { xuArgv, type XuCommand } from './xu-argv'
+import { xuArgv, type XuCommand } from './xu-argv.js'
 
 const pExecFile = promisify(execFile)
 export type Runner = (bin: string, argv: string[]) => Promise<string>

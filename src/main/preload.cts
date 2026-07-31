@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { CH, type CameraApi } from '../shared/ipc'
+import { CH, type CameraApi } from '../shared/ipc.js'
 
 const api: CameraApi = {
   listDevices: () => ipcRenderer.invoke(CH.listDevices),

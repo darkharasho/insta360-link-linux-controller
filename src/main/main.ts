@@ -3,11 +3,11 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import Store from 'electron-store'
 import electronUpdater from 'electron-updater'
-import { V4l2Adapter } from './camera/v4l2'
-import { XuAdapter } from './camera/xu'
-import { PresetStore, type AppPreset } from './camera/presets'
-import { CameraService } from './camera/service'
-import { registerIpc } from './ipc'
+import { V4l2Adapter } from './camera/v4l2.js'
+import { XuAdapter } from './camera/xu.js'
+import { PresetStore, type AppPreset } from './camera/presets.js'
+import { CameraService } from './camera/service.js'
+import { registerIpc } from './ipc.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 

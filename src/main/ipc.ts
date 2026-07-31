@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
-import { CH } from '../shared/ipc'
-import type { CameraService } from './camera/service'
-import type { AiFraming, Scene } from '../shared/types'
+import { CH } from '../shared/ipc.js'
+import type { CameraService } from './camera/service.js'
+import type { AiFraming, Scene } from '../shared/types.js'
 
 export function registerIpc(ipcMain: IpcMain, s: CameraService) {
   ipcMain.handle(CH.listDevices, () => s.listDevices())

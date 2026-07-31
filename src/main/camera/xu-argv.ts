@@ -1,4 +1,4 @@
-import type { AiFraming, Scene } from '../../shared/types'
+import type { AiFraming, Scene } from '../../shared/types.js'
 
 export type XuCommand =
   | { kind: 'ai'; on: boolean }
