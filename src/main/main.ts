@@ -1,0 +1,57 @@
+import { app, BrowserWindow, ipcMain } from 'electron'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+import Store from 'electron-store'
+import electronUpdater from 'electron-updater'
+import { V4l2Adapter } from './camera/v4l2'
+import { XuAdapter } from './camera/xu'
+import { PresetStore, type AppPreset } from './camera/presets'
+import { CameraService } from './camera/service'
+import { registerIpc } from './ipc'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+function resolveLinkXu(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'link-xu')
+    : path.join(__dirname, '../../native/link-xu/link-xu')
+}
+
+function buildService(): CameraService {
+  const store = new Store<{ presets: Record<string, AppPreset[]> }>({ defaults: { presets: {} }})
+  const backend = new Map<string, AppPreset[]>(Object.entries(store.get('presets')))
+  const presets = new PresetStore(backend)
+  // persist on every mutation by re-serializing the map
+  const persist = () => store.set('presets', Object.fromEntries(backend))
+  const wrapped = new Proxy(presets, {
+    get(target, prop, recv) {
+      const val = Reflect.get(target, prop, recv)
+      if (typeof val === 'function' && (prop === 'save' || prop === 'remove')) {
+        return (...args: unknown[]) => { const r = (val as Function).apply(target, args); persist(); return r }
+      }
+      return typeof val === 'function' ? val.bind(target) : val
+    },
+  }) as PresetStore
+  return new CameraService(new V4l2Adapter(), new XuAdapter(resolveLinkXu()), wrapped)
+}
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1180, height: 780, minWidth: 960, minHeight: 640,
+    backgroundColor: '#0b0b0f',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true, nodeIntegration: false,
+    },
+  })
+  if (app.isPackaged) win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  else win.loadURL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173')
+}
+
+app.whenReady().then(() => {
+  registerIpc(ipcMain, buildService())
+  createWindow()
+  if (app.isPackaged) electronUpdater.autoUpdater.checkForUpdatesAndNotify()
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+})
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
