@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ZoomIn, ZoomOut, Home } from 'lucide-react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ZoomIn, ZoomOut, Home } from 'lucide-react'
 import type { Control } from '../../shared/types'
 import { Button } from './ui/button'
 import { Slider } from './ui/slider'
 import { cn } from '../lib/utils'
-import { joystickDelta } from './joystick'
+import { holdSpeed } from './hold-ramp'
 
 interface Props {
   controls: Control[]
@@ -13,24 +13,27 @@ interface Props {
 }
 
 const REPEAT_MS = 80
-/** Usable knob travel from center, px (matches the pad's rendered size). */
-const RADIUS = 44
 
-function useHold(onTick: () => void) {
+/**
+ * Press-and-hold with speed ramp: onTick receives the elapsed hold time so the
+ * caller can move faster the longer the button is held.
+ */
+function useHold(onTick: (elapsedMs: number) => void) {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const start = useCallback(() => {
-    if (timer.current) return
-    onTick()
-    timer.current = setInterval(onTick, REPEAT_MS)
-  }, [onTick])
+  const startedAt = useRef(0)
   const stop = useCallback(() => {
     if (timer.current) {
       clearInterval(timer.current)
       timer.current = null
     }
   }, [])
-  // Clear any running interval if the component unmounts (or this hook
-  // instance is torn down) while a button is still held.
+  const start = useCallback(() => {
+    if (timer.current) return
+    startedAt.current = performance.now()
+    onTick(0)
+    timer.current = setInterval(() => onTick(performance.now() - startedAt.current), REPEAT_MS)
+  }, [onTick])
+  // Clear any running interval if the component unmounts mid-hold.
   useEffect(() => stop, [stop])
   return { start, stop }
 }
@@ -41,131 +44,90 @@ function clamp(v: number, min?: number, max?: number) {
   return v
 }
 
-function Joystick({
-  pan,
-  tilt,
-  setControl,
-  disabled,
-}: {
-  pan?: Control
-  tilt?: Control
-  setControl: (name: string, value: number) => void
-  disabled: boolean
-}) {
-  const [knob, setKnob] = useState({ x: 0, y: 0 })
-  const offset = useRef({ x: 0, y: 0 })
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
-  // Latest control descriptors for the interval callback (state in a closure
-  // would go stale between renders while the optimistic values update).
-  const panRef = useRef(pan)
-  const tiltRef = useRef(tilt)
-  panRef.current = pan
-  tiltRef.current = tilt
-
-  const stop = useCallback(() => {
-    if (timer.current) {
-      clearInterval(timer.current)
-      timer.current = null
-    }
-    offset.current = { x: 0, y: 0 }
-    setKnob({ x: 0, y: 0 })
-  }, [])
-  useEffect(() => stop, [stop])
-
-  const tick = useCallback(() => {
-    const p = panRef.current
-    const t = tiltRef.current
-    const { dpan, dtilt } = joystickDelta(
-      offset.current.x,
-      offset.current.y,
-      RADIUS,
-      p?.step ?? 3600,
-      t?.step ?? 3600,
-    )
-    if (p && dpan !== 0) setControl(p.name, clamp(Math.round(p.value + dpan), p.min, p.max))
-    if (t && dtilt !== 0) setControl(t.name, clamp(Math.round(t.value + dtilt), t.min, t.max))
-  }, [setControl])
-
-  const updateFromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    const dx = e.clientX - (rect.left + rect.width / 2)
-    const dy = e.clientY - (rect.top + rect.height / 2)
-    const len = Math.hypot(dx, dy)
-    const s = len > RADIUS ? RADIUS / len : 1
-    offset.current = { x: dx * s, y: dy * s }
-    setKnob(offset.current)
-  }
-
-  return (
-    <div
-      role="slider"
-      aria-label="Pan and tilt joystick"
-      className={cn(
-        'relative h-28 w-28 shrink-0 touch-none select-none rounded-full border bg-muted/60',
-        disabled ? 'opacity-40' : 'cursor-grab active:cursor-grabbing',
-      )}
-      onPointerDown={(e) => {
-        if (disabled) return
-        e.currentTarget.setPointerCapture(e.pointerId)
-        updateFromPointer(e)
-        if (!timer.current) {
-          tick()
-          timer.current = setInterval(tick, REPEAT_MS)
-        }
-      }}
-      onPointerMove={(e) => {
-        if (!disabled && timer.current) updateFromPointer(e)
-      }}
-      onPointerUp={stop}
-      onPointerCancel={stop}
-    >
-      {/* crosshair */}
-      <div className="pointer-events-none absolute left-1/2 top-2 bottom-2 w-px -translate-x-1/2 bg-border" />
-      <div className="pointer-events-none absolute top-1/2 left-2 right-2 h-px -translate-y-1/2 bg-border" />
-      {/* knob */}
-      <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-9 w-9 rounded-full bg-primary shadow-md transition-transform duration-75"
-        style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
-      />
-    </div>
-  )
-}
-
 export function PtzPad({ controls, setControl, className }: Props) {
   const pan = controls.find((c) => c.name === 'pan_absolute')
   const tilt = controls.find((c) => c.name === 'tilt_absolute')
   const zoom = controls.find((c) => c.name === 'zoom_absolute')
 
+  // Latest descriptors for the hold callbacks (optimistic values change every
+  // tick; a plain closure would nudge from a stale base).
+  const panRef = useRef(pan)
+  const tiltRef = useRef(tilt)
+  const zoomRef = useRef(zoom)
+  panRef.current = pan
+  tiltRef.current = tilt
+  zoomRef.current = zoom
+
   const nudge = useCallback(
-    (c: Control | undefined, delta: number) => {
+    (ref: React.MutableRefObject<Control | undefined>, dir: 1 | -1, elapsedMs: number) => {
+      const c = ref.current
       if (!c) return
-      const step = c.step ?? 1
-      setControl(c.name, clamp(c.value + delta * step, c.min, c.max))
+      const step = (c.step ?? 1) * holdSpeed(elapsedMs)
+      setControl(c.name, clamp(c.value + dir * step, c.min, c.max))
     },
     [setControl],
   )
 
-  const zoomIn = useHold(() => nudge(zoom, 1))
-  const zoomOut = useHold(() => nudge(zoom, -1))
+  const up = useHold((ms) => nudge(tiltRef, 1, ms))
+  const down = useHold((ms) => nudge(tiltRef, -1, ms))
+  const left = useHold((ms) => nudge(panRef, -1, ms))
+  const right = useHold((ms) => nudge(panRef, 1, ms))
+  const zoomIn = useHold((ms) => nudge(zoomRef, 1, ms))
+  const zoomOut = useHold((ms) => nudge(zoomRef, -1, ms))
 
   const disabled = !pan && !tilt
 
-  return (
-    <div className={cn('flex items-center gap-4 rounded-xl border bg-card/80 p-3 backdrop-blur', className)}>
-      <Joystick pan={pan} tilt={tilt} setControl={setControl} disabled={disabled} />
+  const arrow = (
+    hold: { start: () => void; stop: () => void },
+    icon: ReactNode,
+    label: string,
+    pos: string,
+  ) => (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={label}
+      className={cn(
+        'absolute flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors',
+        'hover:bg-primary/20 hover:text-foreground active:bg-primary active:text-primary-foreground',
+        'disabled:pointer-events-none disabled:opacity-40 select-none',
+        pos,
+      )}
+      onPointerDown={hold.start}
+      onPointerUp={hold.stop}
+      onPointerLeave={hold.stop}
+      onPointerCancel={hold.stop}
+    >
+      {icon}
+    </button>
+  )
 
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label="Center"
-        disabled={disabled}
-        onClick={() => {
-          if (pan) setControl(pan.name, pan.default ?? 0)
-          if (tilt) setControl(tilt.name, tilt.default ?? 0)
-        }}
-      >
-        <Home className="h-4 w-4" />
-      </Button>
+  return (
+    <div className={cn('flex items-center gap-5 rounded-xl border bg-card/80 p-3 backdrop-blur', className)}>
+      {/* Compass pad: 4 hold-to-move arrows around a centered Home. */}
+      <div className="relative h-44 w-44 shrink-0 rounded-full border bg-muted/60 shadow-inner">
+        {arrow(up, <ArrowUp className="h-5 w-5" />, 'Tilt up', 'left-1/2 top-2 -translate-x-1/2')}
+        {arrow(down, <ArrowDown className="h-5 w-5" />, 'Tilt down', 'left-1/2 bottom-2 -translate-x-1/2')}
+        {arrow(left, <ArrowLeft className="h-5 w-5" />, 'Pan left', 'top-1/2 left-2 -translate-y-1/2')}
+        {arrow(right, <ArrowRight className="h-5 w-5" />, 'Pan right', 'top-1/2 right-2 -translate-y-1/2')}
+        <button
+          type="button"
+          aria-label="Recenter"
+          disabled={disabled}
+          className={cn(
+            'absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center',
+            'rounded-full border bg-secondary text-muted-foreground transition-all',
+            'hover:text-foreground hover:border-primary hover:shadow-[0_0_0_3px] hover:shadow-primary/25',
+            'disabled:pointer-events-none disabled:opacity-40 select-none',
+          )}
+          onClick={() => {
+            if (pan) setControl(pan.name, pan.default ?? 0)
+            if (tilt) setControl(tilt.name, tilt.default ?? 0)
+          }}
+        >
+          <Home className="h-5 w-5" />
+        </button>
+      </div>
 
       <div className="flex flex-1 items-center gap-2">
         <Button
