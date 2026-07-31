@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Frameless-window drag regions (custom titlebar). */
+.app-drag { -webkit-app-region: drag; }
+.app-no-drag { -webkit-app-region: no-drag; }
+
 @layer base {
   :root {
     --background: 0 0% 100%;

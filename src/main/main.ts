@@ -17,6 +17,23 @@ function resolveLinkXu(): string {
     : path.join(__dirname, '../../native/link-xu/link-xu')
 }
 
+function resolveIcon(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'icon.png')
+    : path.join(__dirname, '../../icons/icon.png')
+}
+
+function registerWindowControls() {
+  ipcMain.on('window:minimize', (e) => BrowserWindow.fromWebContents(e.sender)?.minimize())
+  ipcMain.on('window:toggle-maximize', (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win) return
+    if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  })
+  ipcMain.on('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
+}
+
 function buildService(): CameraService {
   const store = new Store<{ presets: Record<string, AppPreset[]> }>({ defaults: { presets: {} }})
   const backend = new Map<string, AppPreset[]>(Object.entries(store.get('presets')))
@@ -39,6 +56,8 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1180, height: 780, minWidth: 960, minHeight: 640,
     backgroundColor: '#0b0b0f',
+    frame: false,
+    icon: resolveIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true, nodeIntegration: false,
@@ -50,6 +69,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   registerIpc(ipcMain, buildService())
+  registerWindowControls()
   createWindow()
   if (app.isPackaged) electronUpdater.autoUpdater.checkForUpdatesAndNotify()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

@@ -21,6 +21,10 @@ describe('parseListDevices', () => {
   it('uses the USB token as a stable id', () => {
     expect(parseListDevices(raw)[0].id).toBe('usb-0000:11:00.4-1.4.1.1')
   })
+  it('derives a tidy label from the part before the colon', () => {
+    const d = parseListDevices(raw)
+    expect(d.map((x) => x.label)).toEqual(['Insta360 Link 2', 'Insta360 Link 2 Pro'])
+  })
   it('ignores non-video nodes for captureNode', () => {
     const d = parseListDevices(raw)
     expect(d[0].captureNode.startsWith('/dev/video')).toBe(true)

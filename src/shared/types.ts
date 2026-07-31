@@ -1,4 +1,16 @@
-export interface Device { id: string; name: string; captureNode: string; nodes: string[] }
+export interface Device {
+  id: string
+  /** Full raw name from v4l2-ctl, e.g. "Insta360 Link 2: Insta360 Link". */
+  name: string
+  /** Short, tidy name for the UI, e.g. "Insta360 Link 2". */
+  label: string
+  captureNode: string
+  nodes: string[]
+  /** USB vendor id (hex, e.g. "2e1a"), when resolvable via udev. */
+  vendorId?: string
+  /** USB product id (hex, e.g. "4c04"), when resolvable via udev. */
+  productId?: string
+}
 export interface Control {
   name: string
   kind: 'int' | 'bool' | 'menu'

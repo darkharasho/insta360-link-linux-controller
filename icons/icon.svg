@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14141b"/>
+      <stop offset="1" stop-color="#0b0b0f"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <radialGradient id="lens" cx="0.4" cy="0.35" r="0.8">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </radialGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)"/>
+  <rect x="16.5" y="16.5" width="479" height="479" rx="107.5" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="url(#ring)" stroke-width="26"/>
+  <circle cx="256" cy="256" r="104" fill="url(#lens)"/>
+  <circle cx="256" cy="256" r="104" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="2"/>
+  <circle cx="212" cy="214" r="30" fill="#ffffff" fill-opacity="0.14"/>
+  <circle cx="256" cy="256" r="196" fill="none" stroke="url(#ring)" stroke-width="10" stroke-linecap="round" stroke-dasharray="30 46" opacity="0.55"/>
+</svg>

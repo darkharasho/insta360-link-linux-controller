@@ -9,10 +9,13 @@ extraResources:
     to: link-xu
   - from: packaging/99-insta360-link.rules
     to: 99-insta360-link.rules
+  - from: icons/icon.png
+    to: icon.png
 linux:
   target: [AppImage]
   category: Utility
   executableName: insta360-link-controller
+  icon: icons/icon.png
 publish:
   provider: github
   releaseType: release

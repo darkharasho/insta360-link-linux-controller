@@ -19,13 +19,13 @@ export function CameraPicker({ devices, current, onSelect }: Props) {
           if (d) onSelect(d)
         }}
       >
-        <SelectTrigger className="w-56">
+        <SelectTrigger className="w-72">
           <SelectValue placeholder="No camera found" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="min-w-[18rem]">
           {devices.map((d) => (
-            <SelectItem key={d.id} value={d.id}>
-              {d.name}
+            <SelectItem key={d.id} value={d.id} title={d.name}>
+              {d.label}
             </SelectItem>
           ))}
         </SelectContent>

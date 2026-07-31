@@ -10,12 +10,15 @@ export function parseListDevices(raw: string): Device[] {
     const idMatch = header.match(/\(([^)]*)\)\s*:/)
     const id = idMatch ? idMatch[1] : header.trim()
     const name = header.replace(/\s*\([^)]*\)\s*:\s*$/, '').trim()
+    // Tidy display name: v4l2 reports "Insta360 Link 2: Insta360 Link" — the
+    // part before the colon is the human-friendly model name.
+    const label = name.split(':')[0].trim() || name
     const nodes = lines
       .map((l) => l.trim())
       .filter((l) => l.startsWith('/dev/'))
     const captureNode = nodes.find((n) => n.startsWith('/dev/video')) ?? ''
     if (!captureNode) continue
-    devices.push({ id, name, captureNode, nodes })
+    devices.push({ id, name, label, captureNode, nodes })
   }
   return devices
 }

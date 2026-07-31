@@ -1,5 +1,6 @@
-import { AlertCircle, Camera, X } from 'lucide-react'
+import { AlertCircle, X } from 'lucide-react'
 import { useCamera } from './useCamera'
+import { TitleBar } from './components/TitleBar'
 import { CameraPicker } from './components/CameraPicker'
 import { PreviewPane } from './components/PreviewPane'
 import { PtzPad } from './components/PtzPad'
@@ -22,18 +23,13 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
+      <TitleBar />
       <header className="flex items-center justify-between border-b px-6 py-3">
-        <div className="flex items-center gap-2">
-          <Camera className="h-5 w-5 text-primary" />
-          <h1 className="text-base font-semibold">Insta360 Link Controller</h1>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+          {connected ? 'Connected' : 'No camera'}
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
-            {connected ? 'Connected' : 'No camera'}
-          </div>
-          <CameraPicker devices={devices} current={current} onSelect={selectDevice} />
-        </div>
+        <CameraPicker devices={devices} current={current} onSelect={selectDevice} />
       </header>
 
       {lastError && (

@@ -15,3 +15,9 @@ const api: CameraApi = {
   removeAppPreset: (id, name) => ipcRenderer.invoke(CH.removeAppPreset, id, name),
 }
 contextBridge.exposeInMainWorld('cameraApi', api)
+
+contextBridge.exposeInMainWorld('windowControls', {
+  minimize: () => ipcRenderer.send('window:minimize'),
+  toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
+  close: () => ipcRenderer.send('window:close'),
+})

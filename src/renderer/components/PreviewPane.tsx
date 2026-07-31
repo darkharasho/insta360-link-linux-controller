@@ -28,16 +28,32 @@ export function PreviewPane({ current, className }: Props) {
         const probe = await navigator.mediaDevices.getUserMedia({ video: true })
         probe.getTracks().forEach((t) => t.stop())
 
-        const all = await navigator.mediaDevices.enumerateDevices()
-        // TODO(hardware): verify device-label matching with two Insta360 cameras (see Task 15).
-        // A plain substring match on `label` may bind the wrong camera when two
-        // similar Insta360 Link devices are attached; needs the real label format.
-        const match = all.find(
-          (d) => d.kind === 'videoinput' && d.label.includes(current.name),
+        const cams = (await navigator.mediaDevices.enumerateDevices()).filter(
+          (d) => d.kind === 'videoinput',
         )
+        // Match reliably by USB vid:pid, which Chromium includes in the label
+        // (e.g. "Insta360 Link 2 (2e1a:4c04)"). Two same-model Insta360 cameras
+        // share a name prefix, so a plain name substring binds the wrong one —
+        // the vid:pid is unique per unit. Fall back to name/label only if the
+        // vid:pid isn't present in the labels.
+        const vidpid =
+          current.vendorId && current.productId
+            ? `${current.vendorId}:${current.productId}`.toLowerCase()
+            : null
+        const match =
+          (vidpid && cams.find((d) => d.label.toLowerCase().includes(vidpid))) ||
+          cams.find((d) => d.label.includes(current.name)) ||
+          cams.find((d) => d.label.includes(current.label))
+
+        if (!match) {
+          // Better to show "unavailable" than to bind an arbitrary camera and
+          // display the wrong feed.
+          setUnavailable(true)
+          return
+        }
 
         stream = await navigator.mediaDevices.getUserMedia({
-          video: match ? { deviceId: { exact: match.deviceId } } : true,
+          video: { deviceId: { exact: match.deviceId } },
         })
 
         if (cancelled) {
