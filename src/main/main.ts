@@ -57,7 +57,7 @@ function buildService(): CameraService {
 function createWindow() {
   const win = new BrowserWindow({
     width: 1180, height: 780, minWidth: 960, minHeight: 640,
-    backgroundColor: '#0b0b0f',
+    backgroundColor: '#121212',
     frame: false,
     icon: resolveIcon(),
     webPreferences: {
