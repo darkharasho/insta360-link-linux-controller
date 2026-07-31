@@ -2,15 +2,36 @@ import { useEffect, useRef, useState } from 'react'
 import { VideoOff } from 'lucide-react'
 import type { Device } from '../../shared/types'
 import { cn } from '../lib/utils'
+import { EffectsPipeline, type EffectsConfig } from '../effects/pipeline'
 
 interface Props {
   current: Device | null
+  effects: EffectsConfig
+  frameSink: ((data: Uint8Array) => void) | null
   className?: string
 }
 
-export function PreviewPane({ current, className }: Props) {
+export function PreviewPane({ current, effects, frameSink, className }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const pipelineRef = useRef<EffectsPipeline | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+
+  // The pipeline lives as long as the pane: it draws the (hidden) video into
+  // the visible canvas with the selected effect and feeds the vcam sink.
+  useEffect(() => {
+    if (!videoRef.current || !canvasRef.current) return
+    const pipeline = new EffectsPipeline(videoRef.current, canvasRef.current)
+    pipelineRef.current = pipeline
+    pipeline.start()
+    return () => {
+      pipeline.stop()
+      pipelineRef.current = null
+    }
+  }, [])
+
+  useEffect(() => { pipelineRef.current?.setConfig(effects) }, [effects])
+  useEffect(() => { pipelineRef.current?.setSink(frameSink) }, [frameSink])
 
   useEffect(() => {
     let cancelled = false
@@ -53,7 +74,7 @@ export function PreviewPane({ current, className }: Props) {
         }
 
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: match.deviceId } },
+          video: { deviceId: { exact: match.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
         })
 
         if (cancelled) {
@@ -77,11 +98,9 @@ export function PreviewPane({ current, className }: Props) {
 
   return (
     <div className={cn('relative aspect-video w-full overflow-hidden rounded-xl border bg-black', className)}>
-      <video
-        ref={videoRef}
-        autoPlay
-        muted
-        playsInline
+      <video ref={videoRef} autoPlay muted playsInline className="hidden" />
+      <canvas
+        ref={canvasRef}
         className={cn('h-full w-full object-cover', unavailable && 'hidden')}
       />
       {unavailable && (

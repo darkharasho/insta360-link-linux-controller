@@ -1,5 +1,8 @@
+import { useMemo, useState } from 'react'
 import { AlertCircle, X } from 'lucide-react'
 import { useCamera } from './useCamera'
+import { useVcam } from './useVcam'
+import { vcamApi } from './api'
 import { TitleBar } from './components/TitleBar'
 import { CameraPicker } from './components/CameraPicker'
 import { PreviewPane } from './components/PreviewPane'
@@ -7,6 +10,8 @@ import { PtzPad } from './components/PtzPad'
 import { ImageSettings } from './components/ImageSettings'
 import { ModeControl } from './components/ModeControl'
 import { Presets } from './components/Presets'
+import { EffectsPanel } from './components/EffectsPanel'
+import type { EffectsConfig } from './effects/pipeline'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Button } from './components/ui/button'
 import { cn } from './lib/utils'
@@ -18,6 +23,13 @@ export default function App() {
     listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset,
     lastError, dismissError,
   } = useCamera()
+
+  const [effects, setEffects] = useState<EffectsConfig>({ effect: 'none', blurStrength: 12 })
+  const vcam = useVcam()
+  const frameSink = useMemo(
+    () => (vcam.status?.running ? (data: Uint8Array) => vcamApi.sendFrame(data) : null),
+    [vcam.status?.running],
+  )
 
   const connected = !!current
 
@@ -46,15 +58,16 @@ export default function App() {
 
       <main className="flex flex-1 gap-6 overflow-hidden p-6">
         <div className="flex flex-1 flex-col gap-4">
-          <PreviewPane current={current} className="flex-1" />
+          <PreviewPane current={current} effects={effects} frameSink={frameSink} className="flex-1" />
           <PtzPad controls={controls} setControl={setControl} />
         </div>
 
         <aside className="w-80 shrink-0 overflow-y-auto rounded-xl border bg-card p-4">
           <Tabs defaultValue="mode">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="mode">Mode</TabsTrigger>
               <TabsTrigger value="image">Image</TabsTrigger>
+              <TabsTrigger value="effects">Effects</TabsTrigger>
               <TabsTrigger value="presets">Presets</TabsTrigger>
             </TabsList>
 
@@ -69,6 +82,17 @@ export default function App() {
             </TabsContent>
             <TabsContent value="image">
               <ImageSettings controls={controls} setControl={setControl} />
+            </TabsContent>
+            <TabsContent value="effects">
+              <EffectsPanel
+                effects={effects}
+                onEffectsChange={setEffects}
+                vcamStatus={vcam.status}
+                vcamError={vcam.error}
+                onVcamToggle={vcam.toggle}
+                onVcamRefresh={vcam.refresh}
+                disabled={!current}
+              />
             </TabsContent>
             <TabsContent value="presets">
               <Presets

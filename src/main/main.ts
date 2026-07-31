@@ -8,6 +8,8 @@ import { XuAdapter } from './camera/xu.js'
 import { PresetStore, type AppPreset } from './camera/presets.js'
 import { CameraService } from './camera/service.js'
 import { registerIpc } from './ipc.js'
+import { VcamService } from './vcam/service.js'
+import { registerVcamIpc } from './vcam/ipc.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -67,11 +69,15 @@ function createWindow() {
   else win.loadURL(process.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5173')
 }
 
+const vcam = new VcamService()
+
 app.whenReady().then(() => {
   registerIpc(ipcMain, buildService())
+  registerVcamIpc(ipcMain, vcam)
   registerWindowControls()
   createWindow()
   if (app.isPackaged) electronUpdater.autoUpdater.checkForUpdatesAndNotify()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
+app.on('before-quit', () => vcam.stop())

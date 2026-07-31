@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { CH, type CameraApi } from '../shared/ipc.js'
+import { VCAM_CH, type VcamApi } from '../shared/vcam-ipc.js'
 
 const api: CameraApi = {
   listDevices: () => ipcRenderer.invoke(CH.listDevices),
@@ -21,3 +22,11 @@ contextBridge.exposeInMainWorld('windowControls', {
   toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
   close: () => ipcRenderer.send('window:close'),
 })
+
+const vcamApi: VcamApi = {
+  status: () => ipcRenderer.invoke(VCAM_CH.status),
+  start: (w, h, fps) => ipcRenderer.invoke(VCAM_CH.start, w, h, fps),
+  stop: () => ipcRenderer.invoke(VCAM_CH.stop),
+  sendFrame: (data) => ipcRenderer.send(VCAM_CH.frame, data),
+}
+contextBridge.exposeInMainWorld('vcamApi', vcamApi)

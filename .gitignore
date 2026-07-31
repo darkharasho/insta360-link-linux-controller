@@ -9,3 +9,4 @@ build
 .sai/
 .worktrees
 native/link-xu/link-xu
+public/mediapipe/wasm/
