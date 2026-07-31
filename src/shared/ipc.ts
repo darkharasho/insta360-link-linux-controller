@@ -1,4 +1,4 @@
-import type { Device, Control, AiFraming, Scene, AppPreset } from './types.js'
+import type { Device, Control, AiFraming, Scene, AppPreset, CameraMode } from './types.js'
 
 export const CH = {
   listDevices: 'camera:list',
@@ -23,7 +23,17 @@ export interface CameraApi {
   setScene(dev: string, scene: Scene): Promise<void>
   reset(dev: string): Promise<void>
   listAppPresets(deviceId: string): Promise<AppPreset[]>
-  saveAppPreset(deviceId: string, name: string, values: Record<string, number>): Promise<void>
-  applyAppPreset(dev: string, deviceId: string, name: string): Promise<void>
+  saveAppPreset(
+    deviceId: string,
+    name: string,
+    values: Record<string, number>,
+    mode?: CameraMode,
+    framing?: AiFraming,
+  ): Promise<void>
+  applyAppPreset(
+    dev: string,
+    deviceId: string,
+    name: string,
+  ): Promise<{ failed: string[]; mode: CameraMode; framing?: AiFraming }>
   removeAppPreset(deviceId: string, name: string): Promise<void>
 }

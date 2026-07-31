@@ -20,6 +20,15 @@ export interface Control {
   inactive: boolean
 }
 export interface CameraSnapshot { device: Device; controls: Control[] }
-export interface AppPreset { name: string; values: Record<string, number> }
 export type AiFraming = 'head' | 'half' | 'full'
 export type Scene = 'normal' | 'deskview' | 'whiteboard' | 'overhead'
+/** The camera's single hardware mode: manual, AI tracking, or a fixed scene. */
+export type CameraMode = 'normal' | 'ai' | Exclude<Scene, 'normal'>
+export interface AppPreset {
+  name: string
+  values: Record<string, number>
+  /** Mode the camera was in when saved; recall restores it. Absent = normal. */
+  mode?: CameraMode
+  /** AI framing to restore when mode === 'ai'. */
+  framing?: AiFraming
+}

@@ -30,7 +30,36 @@ describe('CameraService', () => {
     await svc.reset('/dev/video1')
     expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'reset' })
   })
-  it('applies an app preset: scene normal first, then controls, position controls nudged', async () => {
+  it('applies a scene-mode preset: image controls + the scene command, no position replay', async () => {
+    const { svc, v4l2, xu } = makeService()
+    v4l2.getControls.mockResolvedValue([])
+    svc.saveAppPreset('cam1', 'Desk', { brightness: 60, pan_absolute: 7200, zoom_absolute: 250 }, 'deskview')
+    const result = await svc.applyAppPreset('/dev/video1', 'cam1', 'Desk')
+
+    // The scene re-aims the gimbal itself: stale pan/tilt/zoom must NOT be replayed.
+    const names = v4l2.setControl.mock.calls.map((c: unknown[]) => c[1])
+    expect(names).toEqual(['brightness'])
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'scene', scene: 'deskview' })
+    expect(result).toMatchObject({ failed: [], mode: 'deskview' })
+  })
+  it('applies an AI preset: position replay, then ai on + framing', async () => {
+    const { svc, v4l2, xu } = makeService()
+    v4l2.getControls.mockResolvedValue([
+      { name: 'pan_absolute', kind: 'int', value: 0, min: -522000, max: 522000, step: 3600, inactive: false },
+    ])
+    svc.saveAppPreset('cam1', 'Track me', { pan_absolute: 7200 }, 'ai', 'full')
+    const result = await svc.applyAppPreset('/dev/video1', 'cam1', 'Track me')
+
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'scene', scene: 'normal' })
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'ai', on: true })
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'framing', mode: 'full' })
+    // ai on must come after the position replay
+    const aiOrder = xu.send.mock.invocationCallOrder[1]
+    const lastSet = v4l2.setControl.mock.invocationCallOrder.at(-1)!
+    expect(aiOrder).toBeGreaterThan(lastSet)
+    expect(result).toMatchObject({ mode: 'ai', framing: 'full' })
+  })
+  it('applies a normal-mode preset: scene normal first, then controls, position controls nudged', async () => {
     const { svc, v4l2, xu } = makeService()
     v4l2.getControls.mockResolvedValue([
       { name: 'pan_absolute', kind: 'int', value: 0, min: -522000, max: 522000, step: 3600, inactive: false },

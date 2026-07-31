@@ -8,8 +8,6 @@ import { cn } from '../lib/utils'
 interface Props {
   device: Device | null
   captureCurrent: () => Promise<Record<string, number>>
-  /** Called after a successful apply — the camera is now in Normal mode. */
-  onApplied?: () => void
   listAppPresets: () => Promise<AppPreset[]>
   saveAppPreset: (name: string, values: Record<string, number>) => Promise<boolean>
   applyAppPreset: (name: string) => Promise<boolean>
@@ -20,7 +18,7 @@ interface Props {
 const SLOT_PREFIX = 'slot:'
 const SLOTS = [1, 2, 3, 4, 5, 6]
 
-export function Presets({ device, captureCurrent, onApplied, listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset, reset }: Props) {
+export function Presets({ device, captureCurrent, listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset, reset }: Props) {
   const [appPresets, setAppPresets] = useState<AppPreset[]>([])
   const [name, setName] = useState('')
 
@@ -41,10 +39,7 @@ export function Presets({ device, captureCurrent, onApplied, listAppPresets, sav
     if (!device) return
     const key = `${SLOT_PREFIX}${n}`
     if (filled.has(key)) {
-      if (await applyAppPreset(key)) {
-        onApplied?.()
-        loadAppPresets()
-      }
+      if (await applyAppPreset(key)) loadAppPresets()
       return
     }
     const values = await captureCurrent()
@@ -102,7 +97,8 @@ export function Presets({ device, captureCurrent, onApplied, listAppPresets, sav
           })}
         </div>
         <p className="text-xs text-muted-foreground">
-          Click an empty slot to save the current position; a filled slot to recall it.
+          Click an empty slot to save the current view — position, image settings, and mode
+          (DeskView, AI Track, …) — and a filled slot to recall it.
         </p>
       </div>
 
@@ -131,13 +127,7 @@ export function Presets({ device, captureCurrent, onApplied, listAppPresets, sav
                 <div key={p.name} className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-accent">
                   <span className="text-sm">{p.name}</span>
                   <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={async () => { if (await applyAppPreset(p.name)) onApplied?.() }}
-                    >
-                      Apply
-                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => applyAppPreset(p.name)}>Apply</Button>
                     <Button
                       variant="ghost"
                       size="icon"

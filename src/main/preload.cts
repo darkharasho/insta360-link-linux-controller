@@ -10,7 +10,7 @@ const api: CameraApi = {
   setScene: (dev, scene) => ipcRenderer.invoke(CH.setScene, dev, scene),
   reset: (dev) => ipcRenderer.invoke(CH.reset, dev),
   listAppPresets: (id) => ipcRenderer.invoke(CH.listAppPresets, id),
-  saveAppPreset: (id, name, values) => ipcRenderer.invoke(CH.saveAppPreset, id, name, values),
+  saveAppPreset: (id, name, values, mode, framing) => ipcRenderer.invoke(CH.saveAppPreset, id, name, values, mode, framing),
   applyAppPreset: (dev, id, name) => ipcRenderer.invoke(CH.applyAppPreset, dev, id, name),
   removeAppPreset: (id, name) => ipcRenderer.invoke(CH.removeAppPreset, id, name),
 }
