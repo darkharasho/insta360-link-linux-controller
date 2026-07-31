@@ -1,0 +1,17 @@
+OBS Virtual Camera (platform:v4l2loopback-000):
+	/dev/video0
+
+Insta360 Link 2: Insta360 Link  (usb-0000:11:00.4-1.4.1.1):
+	/dev/video1
+	/dev/video2
+	/dev/media0
+
+Elgato Game Capture Neo: Elgato (usb-0000:11:00.4-1.4.3.3):
+	/dev/video3
+	/dev/video4
+	/dev/media1
+
+Insta360 Link 2 Pro: Insta360 L (usb-0000:11:00.4-1.4.3.4):
+	/dev/video5
+	/dev/video6
+	/dev/media2
