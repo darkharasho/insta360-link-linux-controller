@@ -80,6 +80,19 @@ export function useCamera() {
     devices, current, controls,
     selectDevice: setCurrent, refresh,
     setControl,
+    // Capture the live hardware state for a preset. Reading a fresh snapshot
+    // (rather than the optimistic `controls` React state) guarantees the saved
+    // values reflect the camera's actual current position/zoom.
+    captureCurrent: async (): Promise<Record<string, number>> => {
+      if (!dev) return {}
+      try {
+        const snap = await cameraApi.getSnapshot(dev)
+        return Object.fromEntries(snap.filter((c) => !c.inactive).map((c) => [c.name, c.value]))
+      } catch (err) {
+        reportError('Read camera state', err)
+        return {}
+      }
+    },
     setAi: (on: boolean) => runMutation('Set AI tracking', () => cameraApi.setAi(dev, on)),
     setFraming: (m: AiFraming) => runMutation('Set framing', () => cameraApi.setFraming(dev, m)),
     setScene: (s: Scene) => runMutation('Set scene', () => cameraApi.setScene(dev, s)),

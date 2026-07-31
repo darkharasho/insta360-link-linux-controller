@@ -14,7 +14,7 @@ import { cn } from './lib/utils'
 export default function App() {
   const {
     devices, current, controls, selectDevice, refresh, setControl,
-    setAi, setFraming, setScene, reset,
+    setAi, setFraming, setScene, reset, captureCurrent,
     listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset,
     lastError, dismissError,
   } = useCamera()
@@ -73,7 +73,7 @@ export default function App() {
             <TabsContent value="presets">
               <Presets
                 device={current}
-                controls={controls}
+                captureCurrent={captureCurrent}
                 listAppPresets={listAppPresets}
                 saveAppPreset={saveAppPreset}
                 applyAppPreset={applyAppPreset}

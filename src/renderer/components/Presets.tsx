@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { RotateCcw, Save, Trash2, X } from 'lucide-react'
-import type { AppPreset, Control, Device } from '../../shared/types'
+import type { AppPreset, Device } from '../../shared/types'
 import { Button } from './ui/button'
 import { Card, CardContent } from './ui/card'
 import { cn } from '../lib/utils'
 
 interface Props {
   device: Device | null
-  controls: Control[]
+  captureCurrent: () => Promise<Record<string, number>>
   listAppPresets: () => Promise<AppPreset[]>
   saveAppPreset: (name: string, values: Record<string, number>) => Promise<boolean>
   applyAppPreset: (name: string) => Promise<boolean>
@@ -18,7 +18,7 @@ interface Props {
 const SLOT_PREFIX = 'slot:'
 const SLOTS = [1, 2, 3, 4, 5, 6]
 
-export function Presets({ device, controls, listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset, reset }: Props) {
+export function Presets({ device, captureCurrent, listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset, reset }: Props) {
   const [appPresets, setAppPresets] = useState<AppPreset[]>([])
   const [name, setName] = useState('')
 
@@ -32,24 +32,18 @@ export function Presets({ device, controls, listAppPresets, saveAppPreset, apply
 
   useEffect(() => { loadAppPresets() }, [loadAppPresets])
 
-  // Only capture active controls: inactive/read-only controls (e.g. a menu
-  // control disabled because a related control is off) don't reflect a
-  // meaningful position and shouldn't be replayed on apply.
-  const snapshot = useCallback(
-    () => Object.fromEntries(controls.filter((c) => !c.inactive).map((c) => [c.name, c.value])),
-    [controls],
-  )
-
   const filled = new Set(appPresets.map((p) => p.name))
   const named = appPresets.filter((p) => !p.name.startsWith(SLOT_PREFIX))
 
   const clickSlot = async (n: number) => {
     if (!device) return
     const key = `${SLOT_PREFIX}${n}`
-    const ok = filled.has(key)
-      ? await applyAppPreset(key)
-      : await saveAppPreset(key, snapshot())
-    if (ok) loadAppPresets()
+    if (filled.has(key)) {
+      if (await applyAppPreset(key)) loadAppPresets()
+      return
+    }
+    const values = await captureCurrent()
+    if (Object.keys(values).length && (await saveAppPreset(key, values))) loadAppPresets()
   }
 
   const clearSlot = async (n: number) => {
@@ -59,8 +53,9 @@ export function Presets({ device, controls, listAppPresets, saveAppPreset, apply
 
   const saveNamed = async () => {
     if (!device || !name.trim()) return
-    const ok = await saveAppPreset(name.trim(), snapshot())
-    if (ok) {
+    const values = await captureCurrent()
+    if (!Object.keys(values).length) return
+    if (await saveAppPreset(name.trim(), values)) {
       setName('')
       loadAppPresets()
     }
