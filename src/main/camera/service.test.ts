@@ -20,6 +20,26 @@ describe('CameraService', () => {
     await svc.setScene('/dev/video1', 'whiteboard')
     expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'scene', scene: 'whiteboard' })
   })
+  it('routes framing to xu adapter', async () => {
+    const { svc, xu } = makeService()
+    await svc.setFraming('/dev/video1', 'full')
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'framing', mode: 'full' })
+  })
+  it('routes preset recall to xu adapter', async () => {
+    const { svc, xu } = makeService()
+    await svc.recallHwPreset('/dev/video1', 2)
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'preset-recall', slot: 2 })
+  })
+  it('routes preset save to xu adapter', async () => {
+    const { svc, xu } = makeService()
+    await svc.saveHwPreset('/dev/video1', 4)
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'preset-save', slot: 4 })
+  })
+  it('routes reset to xu adapter', async () => {
+    const { svc, xu } = makeService()
+    await svc.reset('/dev/video1')
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'reset' })
+  })
   it('applies an app preset by replaying setControl', async () => {
     const { svc, v4l2 } = makeService()
     svc.saveAppPreset('cam1', 'Desk', { zoom_absolute: 250, pan_absolute: 0 })
