@@ -15,7 +15,7 @@ export function PreviewPane({ current, effects, frameSink, className }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pipelineRef = useRef<EffectsPipeline | null>(null)
-  const [unavailable, setUnavailable] = useState(false)
+  const [unavailable, setUnavailable] = useState<string | null>(null)
 
   // The pipeline lives as long as the pane: it draws the (hidden) video into
   // the visible canvas with the selected effect and feeds the vcam sink.
@@ -36,22 +36,35 @@ export function PreviewPane({ current, effects, frameSink, className }: Props) {
   useEffect(() => {
     let cancelled = false
     let stream: MediaStream | null = null
-    setUnavailable(false)
+    setUnavailable(null)
 
     async function start() {
       if (!current) {
-        setUnavailable(true)
+        setUnavailable('No camera selected')
         return
       }
       try {
-        // First ask for any camera permission so device labels are populated,
-        // then enumerate to find the device whose label matches the selected camera.
-        const probe = await navigator.mediaDevices.getUserMedia({ video: true })
-        probe.getTracks().forEach((t) => t.stop())
-
-        const cams = (await navigator.mediaDevices.enumerateDevices()).filter(
+        // Electron normally exposes device labels without a permission grant;
+        // the probe is a best-effort fallback for when it doesn't. It must
+        // never be fatal — the default device it opens may be busy even when
+        // the camera we actually want is free.
+        let cams = (await navigator.mediaDevices.enumerateDevices()).filter(
           (d) => d.kind === 'videoinput',
         )
+        if (!cams.some((d) => d.label)) {
+          try {
+            const probe = await navigator.mediaDevices.getUserMedia({ video: true })
+            probe.getTracks().forEach((t) => t.stop())
+          } catch (err) {
+            console.warn('preview: permission probe failed (continuing)', err)
+          }
+          cams = (await navigator.mediaDevices.enumerateDevices()).filter(
+            (d) => d.kind === 'videoinput',
+          )
+        }
+        // Never bind virtual/loopback outputs (our own filtered camera, OBS).
+        cams = cams.filter((d) => !/filtered|virtual|dummy/i.test(d.label))
+
         // Match reliably by USB vid:pid, which Chromium includes in the label
         // (e.g. "Insta360 Link 2 (2e1a:4c04)"). Two same-model Insta360 cameras
         // share a name prefix, so a plain name substring binds the wrong one —
@@ -69,21 +82,36 @@ export function PreviewPane({ current, effects, frameSink, className }: Props) {
         if (!match) {
           // Better to show "unavailable" than to bind an arbitrary camera and
           // display the wrong feed.
-          setUnavailable(true)
+          console.warn('preview: no matching videoinput', { want: current, labels: cams.map((c) => c.label) })
+          setUnavailable(`No video device matched "${current.label}"`)
           return
         }
 
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: match.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        })
+        const open = () =>
+          navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: match.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          })
+        try {
+          stream = await open()
+        } catch (err) {
+          // Transient NotReadableError happens when the node was released
+          // milliseconds ago (probe, previous selection, another app closing).
+          if ((err as DOMException)?.name !== 'NotReadableError') throw err
+          await new Promise((r) => setTimeout(r, 400))
+          stream = await open()
+        }
 
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop())
           return
         }
         if (videoRef.current) videoRef.current.srcObject = stream
-      } catch {
-        if (!cancelled) setUnavailable(true)
+      } catch (err) {
+        console.error('preview: failed to open camera', err)
+        if (!cancelled) {
+          const e = err as DOMException
+          setUnavailable(e?.name ? `${e.name}: ${e.message || 'camera busy or unavailable'}` : String(err))
+        }
       }
     }
 
@@ -107,8 +135,9 @@ export function PreviewPane({ current, effects, frameSink, className }: Props) {
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary/40 text-center">
           <VideoOff className="h-8 w-8 text-muted-foreground" />
           <p className="max-w-xs text-sm text-muted-foreground">
-            Camera in use or preview unavailable — controls still work
+            Preview unavailable — controls still work
           </p>
+          <p className="max-w-sm text-xs text-muted-foreground/70">{unavailable}</p>
         </div>
       )}
     </div>
