@@ -1,11 +1,8 @@
-import { spawn, execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { findLoopbackDevice } from './vcam-parse.js'
+import { findLoopbackDevice } from '../camera/sysfs.js'
 import { ffmpegVcamArgv } from './ffmpeg-argv.js'
-
-const pExecFile = promisify(execFile)
 
 export const VCAM_NAME = 'Insta360 Link Filtered'
 
@@ -46,8 +43,8 @@ export class VcamService {
   private blocked = false
 
   constructor(
-    private runV4l2: (argv: string[]) => Promise<string> = async (argv) =>
-      (await pExecFile('v4l2-ctl', argv)).stdout,
+    // sysfs lookup: finding the loopback must never open camera nodes.
+    private findDevice: (name: string) => Promise<string | null> = findLoopbackDevice,
     private spawnFn: SpawnFn = (bin, argv) => spawn(bin, argv, { stdio: ['pipe', 'ignore', 'pipe'] }),
     private ffmpegPath: () => string | null = findFfmpeg,
   ) {}
@@ -55,9 +52,9 @@ export class VcamService {
   async status(): Promise<VcamStatus> {
     let devicePath: string | null = null
     try {
-      devicePath = findLoopbackDevice(await this.runV4l2(['--list-devices']), VCAM_NAME)
+      devicePath = await this.findDevice(VCAM_NAME)
     } catch {
-      // v4l2-ctl listing can fail transiently; report as not found.
+      // sysfs scan can fail transiently; report as not found.
     }
     return {
       deviceFound: devicePath !== null,

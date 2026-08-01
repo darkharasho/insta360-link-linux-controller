@@ -81,3 +81,6 @@ app.whenReady().then(() => {
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('before-quit', () => vcam.stop())
+// A terminal SIGINT/SIGTERM must still run before-quit so the vcam ffmpeg
+// child is stopped with the app instead of briefly outliving it.
+for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => app.quit())

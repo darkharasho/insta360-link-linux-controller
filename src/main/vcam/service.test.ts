@@ -2,8 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { VcamService, VCAM_NAME } from './service'
 
-const LIST = `Insta360 Link Filtered (platform:v4l2loopback-001):\n\t/dev/video42\n`
-
 function makeChild() {
   const child = new EventEmitter() as any
   child.stdin = new EventEmitter() as any
@@ -16,7 +14,7 @@ function makeChild() {
 
 function makeService(child = makeChild()) {
   const spawnFn = vi.fn().mockReturnValue(child)
-  const svc = new VcamService(async () => LIST, spawnFn, () => '/usr/bin/ffmpeg')
+  const svc = new VcamService(async () => '/dev/video42', spawnFn, () => '/usr/bin/ffmpeg')
   return { svc, spawnFn, child }
 }
 
@@ -34,7 +32,7 @@ describe('VcamService', () => {
     expect(status.running).toBe(true)
   })
   it('throws when the loopback device is missing', async () => {
-    const svc = new VcamService(async () => 'OBS Virtual Camera (platform:v4l2loopback-000):\n\t/dev/video0\n', vi.fn(), () => '/usr/bin/ffmpeg')
+    const svc = new VcamService(async () => null, vi.fn(), () => '/usr/bin/ffmpeg')
     await expect(svc.start(960, 540, 24)).rejects.toThrow(VCAM_NAME)
   })
   it('drops frames while stdin is backpressured, resumes on drain', async () => {

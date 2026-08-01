@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { listDevicesArgv, listControlsArgv, setControlArgv, getControlArgv } from './v4l2-argv'
+import { listControlsArgv, setControlArgv, getControlArgv } from './v4l2-argv'
 
 describe('v4l2 argv', () => {
-  it('lists devices', () => expect(listDevicesArgv()).toEqual(['--list-devices']))
   it('lists controls for a device', () =>
     expect(listControlsArgv('/dev/video1')).toEqual(['-d', '/dev/video1', '--list-ctrls-menus']))
   it('sets a control', () =>

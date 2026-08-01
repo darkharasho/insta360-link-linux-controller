@@ -1,7 +1,3 @@
-export function listDevicesArgv(): string[] {
-  return ['--list-devices']
-}
-
 export function listControlsArgv(dev: string): string[] {
   return ['-d', dev, '--list-ctrls-menus']
 }
