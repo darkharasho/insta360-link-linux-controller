@@ -2,6 +2,7 @@
   "name": "insta360-link-linux-controller",
   "version": "0.2.0",
   "description": "Control Insta360 Link webcams on Linux",
+  "license": "MIT",
   "main": "dist/main/main.js",
   "type": "module",
   "repository": {
