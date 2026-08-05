@@ -47,8 +47,15 @@ function buildService(): CameraService {
   const wrapped = new Proxy(presets, {
     get(target, prop, recv) {
       const val = Reflect.get(target, prop, recv)
-      if (typeof val === 'function' && (prop === 'save' || prop === 'remove')) {
-        return (...args: unknown[]) => { const r = (val as Function).apply(target, args); persist(); return r }
+      if (typeof val === 'function' && (prop === 'save' || prop === 'remove' || prop === 'migrate')) {
+        return (...args: unknown[]) => {
+          const r = (val as Function).apply(target, args)
+          // migrate() runs on every discovery poll but only moves data once —
+          // persist only when it actually did, or config.json gets rewritten
+          // every 2 s.
+          if (prop !== 'migrate' || r === true) persist()
+          return r
+        }
       }
       return typeof val === 'function' ? val.bind(target) : val
     },

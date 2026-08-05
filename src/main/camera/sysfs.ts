@@ -107,8 +107,10 @@ export async function listCameraDevices(io: SysfsIo = defaultIo): Promise<Device
     const readId = (attr: string) =>
       io.readFile(`${deviceDir}/${attr}`).then((s) => s.trim().toLowerCase()).catch(() => undefined)
     const [vendorId, productId] = await Promise.all([readId('idVendor'), readId('idProduct')])
+    const busId = usbBusInfo(capture.real) ?? ifaceDir
     devices.push({
-      id: usbBusInfo(capture.real) ?? ifaceDir,
+      id: busId,
+      busId,
       name: capture.name,
       label: capture.name.split(':')[0].trim() || capture.name,
       captureNode: capture.dev,
@@ -116,6 +118,21 @@ export async function listCameraDevices(io: SysfsIo = defaultIo): Promise<Device
       ...(vendorId ? { vendorId } : {}),
       ...(productId ? { productId } : {}),
     })
+  }
+  // Identity is keyed by USB model so presets/color follow the camera across
+  // ports and replugs. The cameras expose no USB serial, so two units of the
+  // same model are indistinguishable — only a model that appears exactly once
+  // takes the model id; duplicates keep the port-scoped busId, which never
+  // collides.
+  const modelKey = (d: Device) => (d.vendorId && d.productId ? `usb:${d.vendorId}:${d.productId}` : null)
+  const modelCount = new Map<string, number>()
+  for (const d of devices) {
+    const key = modelKey(d)
+    if (key) modelCount.set(key, (modelCount.get(key) ?? 0) + 1)
+  }
+  for (const d of devices) {
+    const key = modelKey(d)
+    if (key && modelCount.get(key) === 1) d.id = key
   }
   return devices.sort((a, b) => a.captureNode.localeCompare(b.captureNode, undefined, { numeric: true }))
 }

@@ -16,8 +16,15 @@ export class CameraService {
     this.sceneSettleMs = opts.sceneSettleMs ?? 1500
   }
 
-  listDevices(): Promise<Device[]> {
-    return this.v4l2.listDevices()
+  async listDevices(): Promise<Device[]> {
+    const devices = await this.v4l2.listDevices()
+    // Pre-v0.3 presets were keyed by the port-path busId; move them under the
+    // stable camera id. migrate() is a guarded no-op afterwards, so the
+    // discovery watcher re-running this every poll costs nothing.
+    for (const d of devices) {
+      if (d.busId && d.busId !== d.id) this.presets.migrate(d.busId, d.id)
+    }
+    return devices
   }
 
   getSnapshot(dev: string): Promise<Control[]> {

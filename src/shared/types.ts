@@ -1,5 +1,10 @@
 export interface Device {
+  /** Stable camera identity: usb:<vid>:<pid> for a model seen once, else the
+   * port-path busId. Presets and color corrections are keyed by this. */
   id: string
+  /** Port-path identity (v4l2 bus_info); pre-v0.3 data was keyed by this and
+   * is migrated from it. Distinguishes duplicate same-model cameras. */
+  busId?: string
   /** Full raw name from v4l2-ctl, e.g. "Insta360 Link 2: Insta360 Link". */
   name: string
   /** Short, tidy name for the UI, e.g. "Insta360 Link 2". */

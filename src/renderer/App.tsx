@@ -33,11 +33,13 @@ export default function App() {
   })
 
   // Color correction is per camera: load the saved values when the selection
-  // changes, persist edits under the selected camera's id.
+  // changes, persist edits under the selected camera's id. busId lets loadColor
+  // migrate data saved under the pre-v0.3 port-path keys.
   const deviceId = current?.id
+  const busId = current?.busId
   useEffect(() => {
-    setEffects((e) => ({ ...e, color: deviceId ? loadColor(deviceId) : NEUTRAL_COLOR }))
-  }, [deviceId])
+    setEffects((e) => ({ ...e, color: deviceId ? loadColor(deviceId, busId) : NEUTRAL_COLOR }))
+  }, [deviceId, busId])
   const changeColor = useCallback(
     (color: ColorCorrection) => {
       setEffects((e) => ({ ...e, color }))

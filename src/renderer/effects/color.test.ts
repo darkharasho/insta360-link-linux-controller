@@ -136,4 +136,41 @@ describe('per-device persistence', () => {
     backing.set([...backing.keys()][0], '{"temperature":9999,"gamma":"zzz"}')
     expect(loadColor('usb-a')).toEqual(cc({ temperature: 100 }))
   })
+
+  describe('legacy-key migration', () => {
+    const stub = () => {
+      const backing = new Map<string, string>()
+      vi.stubGlobal('localStorage', {
+        getItem: (k: string) => backing.get(k) ?? null,
+        setItem: (k: string, v: string) => void backing.set(k, v),
+        removeItem: (k: string) => void backing.delete(k),
+      })
+      return backing
+    }
+
+    it('moves a correction saved under the legacy port id to the stable id', () => {
+      stub()
+      const c = cc({ temperature: -20, gamma: 1.1 })
+      saveColor('usb-0000:11:00.4-1.4.1.1', c)
+      expect(loadColor('usb:2e1a:4c06', 'usb-0000:11:00.4-1.4.1.1')).toEqual(c)
+      // moved, not copied: the stable key now owns it
+      expect(loadColor('usb:2e1a:4c06')).toEqual(c)
+      expect(loadColor('usb-0000:11:00.4-1.4.1.1')).toEqual(NEUTRAL_COLOR)
+    })
+    it('never overwrites a correction already saved under the stable id', () => {
+      stub()
+      saveColor('usb:2e1a:4c06', cc({ temperature: 40 }))
+      saveColor('usb-legacy', cc({ temperature: -40 }))
+      expect(loadColor('usb:2e1a:4c06', 'usb-legacy')).toEqual(cc({ temperature: 40 }))
+    })
+    it('returns neutral when neither key has data', () => {
+      stub()
+      expect(loadColor('usb:2e1a:4c06', 'usb-legacy')).toEqual(NEUTRAL_COLOR)
+    })
+    it('ignores a legacy id identical to the stable id', () => {
+      stub()
+      saveColor('usb-same', cc({ tint: 15 }))
+      expect(loadColor('usb-same', 'usb-same')).toEqual(cc({ tint: 15 }))
+    })
+  })
 })

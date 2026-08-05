@@ -109,11 +109,22 @@ export function colorFilterMarkup(id: string, c: ColorCorrection): string {
 
 const storageKey = (deviceId: string) => `color-correction:${deviceId}`
 
-/** Load the saved correction for a camera; neutral when unset/unavailable. */
-export function loadColor(deviceId: string): ColorCorrection {
+/**
+ * Load the saved correction for a camera; neutral when unset/unavailable.
+ * When `legacyId` is given (the pre-v0.3 port-path id) and the stable key has
+ * nothing yet, the legacy entry is moved under the stable key first.
+ */
+export function loadColor(deviceId: string, legacyId?: string): ColorCorrection {
   try {
     if (typeof localStorage === 'undefined') return NEUTRAL_COLOR
-    const raw = localStorage.getItem(storageKey(deviceId))
+    let raw = localStorage.getItem(storageKey(deviceId))
+    if (raw === null && legacyId && legacyId !== deviceId) {
+      raw = localStorage.getItem(storageKey(legacyId))
+      if (raw !== null) {
+        localStorage.setItem(storageKey(deviceId), raw)
+        localStorage.removeItem(storageKey(legacyId))
+      }
+    }
     return raw ? sanitizeColor(JSON.parse(raw)) : NEUTRAL_COLOR
   } catch {
     return NEUTRAL_COLOR

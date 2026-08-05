@@ -64,9 +64,13 @@ describe('listCameraDevices', () => {
     expect(d[1].captureNode).toBe('/dev/video5')
     expect(d[0].nodes).toEqual(['/dev/video1', '/dev/video2'])
   })
-  it('reconstructs the v4l2 bus_info id so preset keys stay stable', async () => {
+  it('keys identity by USB model so presets follow the camera across ports', async () => {
     const d = await listCameraDevices(fakeIo())
-    expect(d.map((x) => x.id)).toEqual([
+    expect(d.map((x) => x.id)).toEqual(['usb:2e1a:4c06', 'usb:2e1a:4c04'])
+  })
+  it('still reconstructs the v4l2 bus_info as busId for data migration', async () => {
+    const d = await listCameraDevices(fakeIo())
+    expect(d.map((x) => x.busId)).toEqual([
       'usb-0000:11:00.4-1.4.1.1',
       'usb-0000:11:00.4-1.4.3.4',
     ])
@@ -75,6 +79,35 @@ describe('listCameraDevices', () => {
     const d = await listCameraDevices(fakeIo())
     expect(d[0]).toMatchObject({ vendorId: '2e1a', productId: '4c06' })
     expect(d[1]).toMatchObject({ vendorId: '2e1a', productId: '4c04' })
+  })
+  it('falls back to the port-path id when USB ids are unreadable', async () => {
+    const d = await listCameraDevices(fakeIo(NODES, {}))
+    expect(d.map((x) => x.id)).toEqual([
+      'usb-0000:11:00.4-1.4.1.1',
+      'usb-0000:11:00.4-1.4.3.4',
+    ])
+    expect(d[0].id).toBe(d[0].busId)
+  })
+  it('keeps duplicate same-model cameras port-scoped so ids never collide', async () => {
+    const LINK_B_DEV = `${PCI}/usb7/7-1/7-1.4/7-1.4.2/7-1.4.2.2`
+    const nodes: Record<string, NodeSpec> = {
+      ...NODES,
+      video8: { name: 'Insta360 Link 2: Insta360 Link ', index: 0, real: `${LINK_B_DEV}/7-1.4.2.2:1.0/video4linux/video8` },
+    }
+    const files = {
+      ...USB_IDS,
+      [`${LINK_B_DEV}/idVendor`]: '2e1a\n',
+      [`${LINK_B_DEV}/idProduct`]: '4c04\n',
+    }
+    const d = await listCameraDevices(fakeIo(nodes, files))
+    // The lone Pro keeps its model id; the two Link 2 units are told apart
+    // only by port (they expose no USB serial), exactly like before.
+    expect(d.map((x) => x.id)).toEqual([
+      'usb:2e1a:4c06',
+      'usb-0000:11:00.4-1.4.3.4',
+      'usb-0000:11:00.4-1.4.2.2',
+    ])
+    expect(new Set(d.map((x) => x.id)).size).toBe(3)
   })
   it('excludes virtual devices even when named like an Insta360', async () => {
     const d = await listCameraDevices(fakeIo())

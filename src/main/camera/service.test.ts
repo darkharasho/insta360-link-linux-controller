@@ -5,11 +5,34 @@ import { PresetStore } from './presets'
 function makeService() {
   const v4l2 = { listDevices: vi.fn(), getControls: vi.fn(), setControl: vi.fn().mockResolvedValue(undefined) } as any
   const xu = { send: vi.fn().mockResolvedValue(undefined) } as any
-  const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 0 })
-  return { svc, v4l2, xu }
+  const presets = new PresetStore()
+  const svc = new CameraService(v4l2, xu, presets, { sceneSettleMs: 0 })
+  return { svc, v4l2, xu, presets }
 }
 
+const device = (id: string, busId?: string) => ({
+  id,
+  ...(busId ? { busId } : {}),
+  name: 'Insta360 Link 2 Pro: Insta360 L',
+  label: 'Insta360 Link 2 Pro',
+  captureNode: '/dev/video1',
+  nodes: ['/dev/video1'],
+})
+
 describe('CameraService', () => {
+  it('listDevices migrates presets from the legacy busId key to the stable id', async () => {
+    const { svc, v4l2, presets } = makeService()
+    presets.save('usb-0000:11:00.4-1.4.1.1', { name: 'Desk - Pro', values: { zoom_absolute: 200 } })
+    v4l2.listDevices.mockResolvedValue([device('usb:2e1a:4c06', 'usb-0000:11:00.4-1.4.1.1')])
+    await svc.listDevices()
+    expect(presets.list('usb:2e1a:4c06')).toEqual([{ name: 'Desk - Pro', values: { zoom_absolute: 200 } }])
+    expect(presets.list('usb-0000:11:00.4-1.4.1.1')).toEqual([])
+  })
+  it('listDevices tolerates devices without a busId (port-scoped identity)', async () => {
+    const { svc, v4l2 } = makeService()
+    v4l2.listDevices.mockResolvedValue([device('usb-0000:11:00.4-1.4.1.1')])
+    await expect(svc.listDevices()).resolves.toHaveLength(1)
+  })
   it('routes AI toggle to xu adapter', async () => {
     const { svc, xu } = makeService()
     await svc.setAi('/dev/video1', true)
