@@ -1,6 +1,7 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import { CH, type CameraApi } from '../shared/ipc.js'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { CH, EV, type CameraApi } from '../shared/ipc.js'
 import { VCAM_CH, type VcamApi } from '../shared/vcam-ipc.js'
+import type { Device } from '../shared/types.js'
 
 const api: CameraApi = {
   listDevices: () => ipcRenderer.invoke(CH.listDevices),
@@ -14,6 +15,11 @@ const api: CameraApi = {
   saveAppPreset: (id, name, values, mode, framing) => ipcRenderer.invoke(CH.saveAppPreset, id, name, values, mode, framing),
   applyAppPreset: (dev, id, name) => ipcRenderer.invoke(CH.applyAppPreset, dev, id, name),
   removeAppPreset: (id, name) => ipcRenderer.invoke(CH.removeAppPreset, id, name),
+  onDevicesChanged: (cb) => {
+    const listener = (_e: IpcRendererEvent, devices: Device[]) => cb(devices)
+    ipcRenderer.on(EV.devicesChanged, listener)
+    return () => ipcRenderer.removeListener(EV.devicesChanged, listener)
+  },
 }
 contextBridge.exposeInMainWorld('cameraApi', api)
 

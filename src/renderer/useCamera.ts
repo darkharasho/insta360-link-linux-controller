@@ -41,7 +41,10 @@ export function useCamera() {
   }, [reportError])
 
   const refresh = useCallback(async () => {
-    if (!current) return
+    if (!current) {
+      setControls([])
+      return
+    }
     try {
       setControls(await cameraApi.getSnapshot(current.captureNode))
     } catch (err) {
@@ -51,6 +54,22 @@ export function useCamera() {
 
   useEffect(() => { refreshDevices() }, [refreshDevices])
   useEffect(() => { refresh() }, [refresh])
+
+  // Hotplug: the main process pushes a fresh device list whenever cameras
+  // appear or disappear. Keep the selected device's object identity stable
+  // while it is still present on the same node — PreviewPane reopens its
+  // stream on identity change, and a same-camera update must not restart it.
+  useEffect(() => {
+    if (typeof cameraApi.onDevicesChanged !== 'function') return
+    return cameraApi.onDevicesChanged((d) => {
+      setDevices(d)
+      setCurrent((c) => {
+        const same = c && d.find((x) => x.id === c.id)
+        if (same) return same.captureNode === c.captureNode ? c : same
+        return d[0] ?? null
+      })
+    })
+  }, [])
 
   // Generic wrapper for mutating IPC calls: awaits the call, surfaces any
   // rejection as a user-visible error instead of an unhandled promise

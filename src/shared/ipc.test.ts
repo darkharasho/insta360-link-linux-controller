@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { CH } from './ipc'
+import { CH, EV } from './ipc'
 import { registerIpc } from '../main/ipc'
 
 describe('ipc channels', () => {
@@ -7,6 +7,13 @@ describe('ipc channels', () => {
     expect(CH.listDevices).toBe('camera:list')
     expect(CH.setControl).toBe('camera:setControl')
     expect(Object.values(CH).every((c) => c.startsWith('camera:'))).toBe(true)
+  })
+  it('push events live in the camera namespace and never collide with invoke channels', () => {
+    const invoke = new Set<string>(Object.values(CH))
+    for (const ev of Object.values(EV)) {
+      expect(ev.startsWith('camera:')).toBe(true)
+      expect(invoke.has(ev)).toBe(false)
+    }
   })
   it('registers a handler for each channel', () => {
     const handlers: Record<string, unknown> = {}

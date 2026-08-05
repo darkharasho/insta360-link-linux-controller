@@ -7,6 +7,8 @@ import { V4l2Adapter } from './camera/v4l2.js'
 import { XuAdapter } from './camera/xu.js'
 import { PresetStore, type AppPreset } from './camera/presets.js'
 import { CameraService } from './camera/service.js'
+import { DeviceWatcher } from './camera/watcher.js'
+import { EV } from '../shared/ipc.js'
 import { registerIpc } from './ipc.js'
 import { VcamService } from './vcam/service.js'
 import { registerVcamIpc } from './vcam/ipc.js'
@@ -72,10 +74,23 @@ function createWindow() {
 const vcam = new VcamService()
 
 app.whenReady().then(() => {
-  registerIpc(ipcMain, buildService())
+  const service = buildService()
+  registerIpc(ipcMain, service)
   registerVcamIpc(ipcMain, vcam)
   registerWindowControls()
   createWindow()
+  // Hotplug: cameras plugged in (or unplugged) after launch must show up
+  // without a restart. Polling is sysfs-only, so it never wakes a camera.
+  const watcher = new DeviceWatcher(
+    () => service.listDevices(),
+    (devices) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send(EV.devicesChanged, devices)
+      }
+    },
+  )
+  watcher.start()
+  app.on('before-quit', () => watcher.stop())
   if (app.isPackaged) electronUpdater.autoUpdater.checkForUpdatesAndNotify()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertCircle, X } from 'lucide-react'
 import { useCamera } from './useCamera'
 import { useVcam } from './useVcam'
@@ -8,10 +8,12 @@ import { CameraPicker } from './components/CameraPicker'
 import { PreviewPane } from './components/PreviewPane'
 import { PtzPad } from './components/PtzPad'
 import { ImageSettings } from './components/ImageSettings'
+import { ColorPanel } from './components/ColorPanel'
 import { ModeControl } from './components/ModeControl'
 import { Presets } from './components/Presets'
 import { EffectsPanel } from './components/EffectsPanel'
 import type { EffectsConfig } from './effects/pipeline'
+import { NEUTRAL_COLOR, loadColor, saveColor, type ColorCorrection } from './effects/color'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Button } from './components/ui/button'
 import { cn } from './lib/utils'
@@ -24,7 +26,26 @@ export default function App() {
     lastError, dismissError,
   } = useCamera()
 
-  const [effects, setEffects] = useState<EffectsConfig>({ effect: 'none', blurStrength: 12 })
+  const [effects, setEffects] = useState<EffectsConfig>({
+    effect: 'none',
+    blurStrength: 12,
+    color: NEUTRAL_COLOR,
+  })
+
+  // Color correction is per camera: load the saved values when the selection
+  // changes, persist edits under the selected camera's id.
+  const deviceId = current?.id
+  useEffect(() => {
+    setEffects((e) => ({ ...e, color: deviceId ? loadColor(deviceId) : NEUTRAL_COLOR }))
+  }, [deviceId])
+  const changeColor = useCallback(
+    (color: ColorCorrection) => {
+      setEffects((e) => ({ ...e, color }))
+      if (deviceId) saveColor(deviceId, color)
+    },
+    [deviceId],
+  )
+
   const vcam = useVcam()
   const frameSink = useMemo(
     () => (vcam.status?.running ? (data: Uint8Array) => vcamApi.sendFrame(data) : null),
@@ -81,7 +102,12 @@ export default function App() {
               />
             </TabsContent>
             <TabsContent value="image">
-              <ImageSettings controls={controls} setControl={setControl} />
+              <div className="flex flex-col gap-6">
+                <ImageSettings controls={controls} setControl={setControl} />
+                <div className="border-t pt-4">
+                  <ColorPanel color={effects.color} onChange={changeColor} disabled={!current} />
+                </div>
+              </div>
             </TabsContent>
             <TabsContent value="effects">
               <EffectsPanel

@@ -1,10 +1,13 @@
 import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision'
+import { NEUTRAL_COLOR, isNeutral, colorFilterMarkup, type ColorCorrection } from './color'
 
 export type EffectKind = 'none' | 'blur' | 'soft' | 'mono' | 'warm'
 export interface EffectsConfig {
   effect: EffectKind
   /** Background blur radius in px (only used by the 'blur' effect). */
   blurStrength: number
+  /** Per-device software color correction, applied before the effect. */
+  color: ColorCorrection
 }
 
 /** Fixed processing size: matches the cameras' 16:9 output and keeps the
@@ -39,8 +42,10 @@ function getSegmenter(): Promise<ImageSegmenter> {
  * Background blur = MediaPipe selfie segmentation: blurred frame underneath,
  * person composited sharp on top.
  */
+let filterSeq = 0
+
 export class EffectsPipeline {
-  private config: EffectsConfig = { effect: 'none', blurStrength: 12 }
+  private config: EffectsConfig = { effect: 'none', blurStrength: 12, color: NEUTRAL_COLOR }
   private sink: ((data: Uint8Array) => void) | null = null
   private raf = 0
   private running = false
@@ -57,6 +62,12 @@ export class EffectsPipeline {
   private maskCtx = this.maskCtx0()
   private maskImage: ImageData | null = null
 
+  /** Hidden SVG hosting the color-correction filter that ctx.filter references
+   * by url(#id). It must live in the document for the reference to resolve. */
+  private filterId = `color-correction-${++filterSeq}`
+  private filterHost: SVGSVGElement
+  private appliedColorKey = ''
+
   constructor(private video: HTMLVideoElement, private canvas: HTMLCanvasElement) {
     canvas.width = PIPELINE_WIDTH
     canvas.height = PIPELINE_HEIGHT
@@ -65,6 +76,26 @@ export class EffectsPipeline {
       c.height = PIPELINE_HEIGHT
     }
     this.out = canvas.getContext('2d', { willReadFrequently: true })!
+    this.filterHost = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    this.filterHost.setAttribute('width', '0')
+    this.filterHost.setAttribute('height', '0')
+    this.filterHost.setAttribute('aria-hidden', 'true')
+    this.filterHost.style.position = 'absolute'
+    document.body.appendChild(this.filterHost)
+    this.syncColorFilter()
+  }
+
+  private syncColorFilter() {
+    const c = this.config.color ?? NEUTRAL_COLOR
+    const key = JSON.stringify(c)
+    if (key === this.appliedColorKey) return
+    this.appliedColorKey = key
+    this.filterHost.innerHTML = colorFilterMarkup(this.filterId, c)
+  }
+
+  /** The ctx.filter fragment for color correction; '' when neutral. */
+  private colorFilter(): string {
+    return isNeutral(this.config.color ?? NEUTRAL_COLOR) ? '' : `url(#${this.filterId})`
   }
 
   private maskCtx0() {
@@ -73,6 +104,7 @@ export class EffectsPipeline {
 
   setConfig(c: EffectsConfig) {
     this.config = c
+    this.syncColorFilter()
     if (c.effect === 'blur' && !this.segmenter && !this.segmenterFailed) {
       getSegmenter()
         .then((s) => { this.segmenter = s })
@@ -101,6 +133,7 @@ export class EffectsPipeline {
   stop() {
     this.running = false
     cancelAnimationFrame(this.raf)
+    this.filterHost.remove()
   }
 
   private drawFrame() {
@@ -132,10 +165,12 @@ export class EffectsPipeline {
         composited = true
       })
 
-      // Blurred background layer.
+      // Blurred background layer. Color correction is applied on the draws
+      // into the output canvas (attached to the document), where the url(#id)
+      // filter reference is guaranteed to resolve.
       this.bgCtx.filter = `blur(${this.config.blurStrength}px)`
       this.bgCtx.drawImage(video, 0, 0, w, h)
-      out.filter = 'none'
+      out.filter = this.colorFilter() || 'none'
       out.drawImage(this.bg, 0, 0)
 
       if (composited) {
@@ -144,13 +179,16 @@ export class EffectsPipeline {
         this.personCtx.drawImage(this.maskCanvas, 0, 0)
         out.drawImage(this.person, 0, 0)
       }
+      out.filter = 'none'
     } else {
-      out.filter =
-        effect === 'none' || effect === 'blur'
-          ? effect === 'blur'
+      const effectPart =
+        effect === 'none'
+          ? ''
+          : effect === 'blur'
             ? `blur(${this.config.blurStrength}px)` // segmenter unavailable: full-frame fallback
-            : 'none'
-          : FRAME_FILTERS[effect]
+            : FRAME_FILTERS[effect]
+      // Correct color first, then apply the stylistic effect on top.
+      out.filter = [this.colorFilter(), effectPart].filter(Boolean).join(' ') || 'none'
       out.drawImage(video, 0, 0, w, h)
       out.filter = 'none'
     }

@@ -14,6 +14,11 @@ export const CH = {
   removeAppPreset: 'camera:removeAppPreset',
 } as const
 
+/** Main→renderer push events (no invoke handler, unlike CH channels). */
+export const EV = {
+  devicesChanged: 'camera:devicesChanged',
+} as const
+
 export interface CameraApi {
   listDevices(): Promise<Device[]>
   getSnapshot(dev: string): Promise<Control[]>
@@ -36,4 +41,6 @@ export interface CameraApi {
     name: string,
   ): Promise<{ failed: string[]; mode: CameraMode; framing?: AiFraming }>
   removeAppPreset(deviceId: string, name: string): Promise<void>
+  /** Subscribe to hotplug updates; returns an unsubscribe function. */
+  onDevicesChanged(cb: (devices: Device[]) => void): () => void
 }
