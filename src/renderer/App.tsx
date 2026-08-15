@@ -14,6 +14,8 @@ import { Presets } from './components/Presets'
 import { EffectsPanel } from './components/EffectsPanel'
 import type { EffectsConfig } from './effects/pipeline'
 import { NEUTRAL_COLOR, loadColor, saveColor, type ColorCorrection } from './effects/color'
+import { NEUTRAL_ORIENT, loadOrient, saveOrient, type Orientation } from './effects/orient'
+import { OrientationPanel } from './components/OrientationPanel'
 import { loadPreviewEnabled, savePreviewEnabled } from './preview-pref'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Button } from './components/ui/button'
@@ -31,20 +33,32 @@ export default function App() {
     effect: 'none',
     blurStrength: 12,
     color: NEUTRAL_COLOR,
+    orient: NEUTRAL_ORIENT,
   })
 
-  // Color correction is per camera: load the saved values when the selection
-  // changes, persist edits under the selected camera's id. busId lets loadColor
-  // migrate data saved under the pre-v0.3 port-path keys.
+  // Color correction and orientation are per camera: load the saved values
+  // when the selection changes, persist edits under the selected camera's id.
+  // busId lets loadColor migrate data saved under the pre-v0.3 port-path keys.
   const deviceId = current?.id
   const busId = current?.busId
   useEffect(() => {
-    setEffects((e) => ({ ...e, color: deviceId ? loadColor(deviceId, busId) : NEUTRAL_COLOR }))
+    setEffects((e) => ({
+      ...e,
+      color: deviceId ? loadColor(deviceId, busId) : NEUTRAL_COLOR,
+      orient: deviceId ? loadOrient(deviceId) : NEUTRAL_ORIENT,
+    }))
   }, [deviceId, busId])
   const changeColor = useCallback(
     (color: ColorCorrection) => {
       setEffects((e) => ({ ...e, color }))
       if (deviceId) saveColor(deviceId, color)
+    },
+    [deviceId],
+  )
+  const changeOrient = useCallback(
+    (orient: Orientation) => {
+      setEffects((e) => ({ ...e, orient }))
+      if (deviceId) saveOrient(deviceId, orient)
     },
     [deviceId],
   )
@@ -130,6 +144,9 @@ export default function App() {
             <TabsContent value="image">
               <div className="flex flex-col gap-6">
                 <ImageSettings controls={controls} setControl={setControl} />
+                <div className="border-t pt-4">
+                  <OrientationPanel orient={effects.orient} onChange={changeOrient} disabled={!current} />
+                </div>
                 <div className="border-t pt-4">
                   <ColorPanel color={effects.color} onChange={changeColor} disabled={!current} />
                 </div>

@@ -1,5 +1,6 @@
 import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision'
 import { NEUTRAL_COLOR, isNeutral, colorFilterMarkup, type ColorCorrection } from './color'
+import { NEUTRAL_ORIENT, isNeutralOrient, orientTransform, type Orientation } from './orient'
 
 export type EffectKind = 'none' | 'blur' | 'soft' | 'mono' | 'warm'
 export interface EffectsConfig {
@@ -8,6 +9,8 @@ export interface EffectsConfig {
   blurStrength: number
   /** Per-device software color correction, applied before the effect. */
   color: ColorCorrection
+  /** Per-device rotate/mirror, applied where the raw video is first drawn. */
+  orient: Orientation
 }
 
 /** Fixed processing size: matches the cameras' 16:9 output and keeps the
@@ -45,7 +48,12 @@ function getSegmenter(): Promise<ImageSegmenter> {
 let filterSeq = 0
 
 export class EffectsPipeline {
-  private config: EffectsConfig = { effect: 'none', blurStrength: 12, color: NEUTRAL_COLOR }
+  private config: EffectsConfig = {
+    effect: 'none',
+    blurStrength: 12,
+    color: NEUTRAL_COLOR,
+    orient: NEUTRAL_ORIENT,
+  }
   private sink: ((data: Uint8Array) => void) | null = null
   private raf = 0
   private running = false
@@ -136,6 +144,21 @@ export class EffectsPipeline {
     this.filterHost.remove()
   }
 
+  /** Draw the raw video with the configured rotate/mirror applied. Doing it at
+   * the source keeps everything downstream (segmentation mask, composite,
+   * sink) aligned with the corrected image. */
+  private drawVideo(ctx: CanvasRenderingContext2D) {
+    if (isNeutralOrient(this.config.orient)) {
+      ctx.drawImage(this.video, 0, 0, PIPELINE_WIDTH, PIPELINE_HEIGHT)
+      return
+    }
+    const [a, b, c, d, e, f] = orientTransform(this.config.orient, PIPELINE_WIDTH, PIPELINE_HEIGHT)
+    ctx.save()
+    ctx.setTransform(a, b, c, d, e, f)
+    ctx.drawImage(this.video, 0, 0, PIPELINE_WIDTH, PIPELINE_HEIGHT)
+    ctx.restore()
+  }
+
   private drawFrame() {
     const { video, out } = this
     if (video.readyState < 2 || video.videoWidth === 0) return
@@ -147,7 +170,7 @@ export class EffectsPipeline {
       // Work frame at pipeline size so the mask aligns 1:1 with our canvases.
       this.personCtx.globalCompositeOperation = 'source-over'
       this.personCtx.filter = 'none'
-      this.personCtx.drawImage(video, 0, 0, w, h)
+      this.drawVideo(this.personCtx)
 
       let composited = false
       this.segmenter.segmentForVideo(this.person, performance.now(), (result) => {
@@ -169,7 +192,7 @@ export class EffectsPipeline {
       // into the output canvas (attached to the document), where the url(#id)
       // filter reference is guaranteed to resolve.
       this.bgCtx.filter = `blur(${this.config.blurStrength}px)`
-      this.bgCtx.drawImage(video, 0, 0, w, h)
+      this.drawVideo(this.bgCtx)
       out.filter = this.colorFilter() || 'none'
       out.drawImage(this.bg, 0, 0)
 
@@ -189,7 +212,7 @@ export class EffectsPipeline {
             : FRAME_FILTERS[effect]
       // Correct color first, then apply the stylistic effect on top.
       out.filter = [this.colorFilter(), effectPart].filter(Boolean).join(' ') || 'none'
-      out.drawImage(video, 0, 0, w, h)
+      this.drawVideo(out)
       out.filter = 'none'
     }
 
