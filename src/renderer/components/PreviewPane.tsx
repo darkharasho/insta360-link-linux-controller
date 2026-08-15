@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { VideoOff } from 'lucide-react'
+import { Video, VideoOff } from 'lucide-react'
 import type { Device } from '../../shared/types'
 import { cn } from '../lib/utils'
 import { EffectsPipeline, type EffectsConfig } from '../effects/pipeline'
+import { Button } from './ui/button'
 
 interface Props {
   current: Device | null
   effects: EffectsConfig
   frameSink: ((data: Uint8Array) => void) | null
+  /** Off releases the camera stream so other apps can capture from it. */
+  enabled: boolean
+  onToggle: () => void
   className?: string
 }
 
-export function PreviewPane({ current, effects, frameSink, className }: Props) {
+export function PreviewPane({ current, effects, frameSink, enabled, onToggle, className }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pipelineRef = useRef<EffectsPipeline | null>(null)
@@ -37,6 +41,14 @@ export function PreviewPane({ current, effects, frameSink, className }: Props) {
     let cancelled = false
     let stream: MediaStream | null = null
     setUnavailable(null)
+
+    if (!enabled) {
+      // The previous run's cleanup already released the stream; blank the
+      // canvas so a stale frame doesn't flash when the preview comes back.
+      const canvas = canvasRef.current
+      canvas?.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height)
+      return
+    }
 
     async function start() {
       if (!current) {
@@ -122,23 +134,45 @@ export function PreviewPane({ current, effects, frameSink, className }: Props) {
       if (stream) stream.getTracks().forEach((t) => t.stop())
       if (videoRef.current) videoRef.current.srcObject = null
     }
-  }, [current])
+  }, [current, enabled])
 
   return (
     <div className={cn('relative aspect-video w-full overflow-hidden rounded-xl border bg-black', className)}>
       <video ref={videoRef} autoPlay muted playsInline className="hidden" />
       <canvas
         ref={canvasRef}
-        className={cn('h-full w-full object-cover', unavailable && 'hidden')}
+        className={cn('h-full w-full object-cover', (!enabled || unavailable) && 'hidden')}
       />
-      {unavailable && (
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={enabled ? 'Turn off preview' : 'Turn on preview'}
+        title={enabled ? 'Turn off preview and release the camera' : 'Turn on preview'}
+        onClick={onToggle}
+        className="absolute right-3 top-3 z-10 h-8 w-8 bg-black/40 text-white opacity-70 hover:bg-black/60 hover:text-white hover:opacity-100"
+      >
+        {enabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+      </Button>
+      {!enabled ? (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary/40 text-center">
           <VideoOff className="h-8 w-8 text-muted-foreground" />
           <p className="max-w-xs text-sm text-muted-foreground">
-            Preview unavailable — controls still work
+            Preview off — camera released for other apps; controls still work
           </p>
-          <p className="max-w-sm text-xs text-muted-foreground/70">{unavailable}</p>
+          <Button variant="secondary" size="sm" className="mt-1" onClick={onToggle}>
+            Turn on preview
+          </Button>
         </div>
+      ) : (
+        unavailable && (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary/40 text-center">
+            <VideoOff className="h-8 w-8 text-muted-foreground" />
+            <p className="max-w-xs text-sm text-muted-foreground">
+              Preview unavailable — controls still work
+            </p>
+            <p className="max-w-sm text-xs text-muted-foreground/70">{unavailable}</p>
+          </div>
+        )
       )}
     </div>
   )

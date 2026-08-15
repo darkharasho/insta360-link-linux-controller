@@ -24,11 +24,13 @@ interface Props {
   vcamError: string | null
   onVcamToggle: () => void
   onVcamRefresh: () => void
+  /** The virtual camera streams the preview pipeline; off means no source. */
+  previewOn: boolean
   disabled: boolean
 }
 
 export function EffectsPanel({
-  effects, onEffectsChange, vcamStatus, vcamError, onVcamToggle, onVcamRefresh, disabled,
+  effects, onEffectsChange, vcamStatus, vcamError, onVcamToggle, onVcamRefresh, previewOn, disabled,
 }: Props) {
   return (
     <div className="flex flex-col gap-6">
@@ -70,7 +72,7 @@ export function EffectsPanel({
           {vcamStatus?.deviceFound && (
             <Switch
               checked={vcamStatus?.running ?? false}
-              disabled={disabled || !vcamStatus?.ffmpegFound}
+              disabled={disabled || !vcamStatus?.ffmpegFound || !previewOn}
               onCheckedChange={onVcamToggle}
             />
           )}
@@ -106,9 +108,11 @@ export function EffectsPanel({
 
         {vcamStatus?.deviceFound && (
           <p className="text-xs text-muted-foreground">
-            {vcamStatus.running
-              ? `Streaming the filtered view to ${vcamStatus.devicePath} — select "Insta360 Link Filtered" in Zoom/OBS.`
-              : `Ready on ${vcamStatus.devicePath}. Toggle on, then pick "Insta360 Link Filtered" in your meeting app.`}
+            {!previewOn
+              ? 'The preview is off — turn it back on to use the virtual camera (it streams the preview image).'
+              : vcamStatus.running
+                ? `Streaming the filtered view to ${vcamStatus.devicePath} — select "Insta360 Link Filtered" in Zoom/OBS.`
+                : `Ready on ${vcamStatus.devicePath}. Toggle on, then pick "Insta360 Link Filtered" in your meeting app.`}
           </p>
         )}
 

@@ -31,5 +31,15 @@ export function useVcam() {
     refresh()
   }, [status?.running, refresh])
 
-  return { status, error, refresh, toggle }
+  const stop = useCallback(async () => {
+    setError(null)
+    try {
+      await vcamApi.stop()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+    refresh()
+  }, [refresh])
+
+  return { status, error, refresh, toggle, stop }
 }

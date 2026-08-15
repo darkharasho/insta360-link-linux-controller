@@ -14,6 +14,7 @@ import { Presets } from './components/Presets'
 import { EffectsPanel } from './components/EffectsPanel'
 import type { EffectsConfig } from './effects/pipeline'
 import { NEUTRAL_COLOR, loadColor, saveColor, type ColorCorrection } from './effects/color'
+import { loadPreviewEnabled, savePreviewEnabled } from './preview-pref'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Button } from './components/ui/button'
 import { cn } from './lib/utils'
@@ -49,9 +50,25 @@ export default function App() {
   )
 
   const vcam = useVcam()
+
+  // Preview off releases the camera stream so other apps can use it while the
+  // v4l2 controls keep working. The virtual camera streams the preview
+  // pipeline, so it stops with it — never leave consumers a frozen frame.
+  const [previewOn, setPreviewOn] = useState(loadPreviewEnabled)
+  const stopVcam = vcam.stop
+  const togglePreview = useCallback(() => {
+    const next = !previewOn
+    setPreviewOn(next)
+    savePreviewEnabled(next)
+    // Unconditional: the polled status can lag a just-started vcam, and
+    // VcamService.stop() is a no-op when nothing is running.
+    if (!next) stopVcam()
+  }, [previewOn, stopVcam])
+
+  const vcamRunning = vcam.status?.running ?? false
   const frameSink = useMemo(
-    () => (vcam.status?.running ? (data: Uint8Array) => vcamApi.sendFrame(data) : null),
-    [vcam.status?.running],
+    () => (vcamRunning && previewOn ? (data: Uint8Array) => vcamApi.sendFrame(data) : null),
+    [vcamRunning, previewOn],
   )
 
   const connected = !!current
@@ -81,7 +98,14 @@ export default function App() {
 
       <main className="flex flex-1 gap-6 overflow-hidden p-6">
         <div className="flex flex-1 flex-col gap-4">
-          <PreviewPane current={current} effects={effects} frameSink={frameSink} className="flex-1" />
+          <PreviewPane
+            current={current}
+            effects={effects}
+            frameSink={frameSink}
+            enabled={previewOn}
+            onToggle={togglePreview}
+            className="flex-1"
+          />
           <PtzPad controls={controls} setControl={setControl} />
         </div>
 
@@ -119,6 +143,7 @@ export default function App() {
                 vcamError={vcam.error}
                 onVcamToggle={vcam.toggle}
                 onVcamRefresh={vcam.refresh}
+                previewOn={previewOn}
                 disabled={!current}
               />
             </TabsContent>
