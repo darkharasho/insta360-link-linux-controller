@@ -158,3 +158,162 @@ describe('CameraService', () => {
     expect(result.failed).toEqual([])
   })
 })
+
+describe('CameraService wakes the camera before driving it', () => {
+  // A control write holds the device open for only ~25ms, which is not long
+  // enough to wake a sleeping Link; the write then succeeds while the camera
+  // ignores it. Ordering matters: waking after the write is useless.
+  function makeWoken() {
+    const order: string[] = []
+    const waker = { ensureAwake: vi.fn(async () => { order.push('wake') }) }
+    const v4l2 = {
+      listDevices: vi.fn(),
+      getControls: vi.fn().mockResolvedValue([]),
+      setControl: vi.fn(async () => { order.push('setControl') }),
+    } as any
+    const xu = { send: vi.fn(async () => { order.push('xu') }) } as any
+    const presets = new PresetStore()
+    const svc = new CameraService(v4l2, xu, presets, { sceneSettleMs: 0 }, waker)
+    return { svc, v4l2, xu, presets, waker, order }
+  }
+
+  it('wakes before a control write', async () => {
+    const { svc, waker, order } = makeWoken()
+    await svc.setControl('/dev/video1', 'pan_absolute', 3600)
+    expect(waker.ensureAwake).toHaveBeenCalledWith('/dev/video1')
+    expect(order).toEqual(['wake', 'setControl'])
+  })
+
+  it('wakes before a gimbal reset', async () => {
+    // reset() then issues several commands (XU trigger, scene clear, pan/tilt
+    // home); only the wake having to come first is asserted here.
+    const { svc, order } = makeWoken()
+    await svc.reset('/dev/video1')
+    expect(order[0]).toBe('wake')
+    expect(order.indexOf('wake')).toBe(order.lastIndexOf('wake'))
+  })
+
+  it('wakes before AI, framing and scene commands', async () => {
+    for (const call of [
+      (s: CameraService) => s.setAi('/dev/video1', true),
+      (s: CameraService) => s.setFraming('/dev/video1', 'half'),
+      (s: CameraService) => s.setScene('/dev/video1', 'normal'),
+    ]) {
+      const { svc, order } = makeWoken()
+      await call(svc)
+      expect(order).toEqual(['wake', 'xu'])
+    }
+  })
+
+  it('wakes before replaying a preset', async () => {
+    const { svc, presets, order } = makeWoken()
+    presets.save('cam', { name: 'Desk', values: { pan_absolute: 3600 }, mode: 'normal' })
+    await svc.applyAppPreset('/dev/video1', 'cam', 'Desk')
+    expect(order[0]).toBe('wake')
+  })
+})
+
+describe('CameraService.reset actually recenters the gimbal', () => {
+  // Measured on a Link 2 Pro: the XU gimbal-reset trigger (unit 9, selector 14)
+  // is accepted -- GET_LEN reports 1 byte, GET_INFO reports SET-only, and the
+  // ioctl returns success -- but the gimbal does not move. With the camera
+  // parked 50 deg off-center, nothing moved for 10s after the trigger. A scene
+  // mode also makes the camera ignore pan/tilt writes entirely. So recentering
+  // means clearing the scene and driving pan/tilt home ourselves.
+  const ptz = [
+    { name: 'pan_absolute', kind: 'int', value: 180000, min: -522000, max: 522000, step: 3600, default: 0 },
+    { name: 'tilt_absolute', kind: 'int', value: 36000, min: -324000, max: 360000, step: 3600, default: 0 },
+    { name: 'brightness', kind: 'int', value: 5, min: 0, max: 10, step: 1, default: 5 },
+  ]
+
+  function makeReset() {
+    const calls: string[] = []
+    const v4l2 = {
+      listDevices: vi.fn(),
+      getControls: vi.fn().mockResolvedValue(ptz),
+      setControl: vi.fn(async (_d: string, n: string, v: number) => { calls.push(`${n}=${v}`) }),
+    } as any
+    const xu = { send: vi.fn(async (_d: string, c: any) => { calls.push(`xu:${c.kind}${c.scene ? ':' + c.scene : ''}`) }) } as any
+    const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 0 })
+    return { svc, v4l2, xu, calls }
+  }
+
+  it('drives pan and tilt to their defaults instead of trusting the XU trigger', async () => {
+    const { svc, calls } = makeReset()
+    await svc.reset('/dev/video1')
+    expect(calls).toContain('pan_absolute=0')
+    expect(calls).toContain('tilt_absolute=0')
+  })
+
+  it('clears any active scene before writing pan/tilt, which a scene would ignore', async () => {
+    const { svc, calls } = makeReset()
+    await svc.reset('/dev/video1')
+    const scene = calls.indexOf('xu:scene:normal')
+    const pan = calls.findIndex((c) => c.startsWith('pan_absolute'))
+    expect(scene).toBeGreaterThanOrEqual(0)
+    expect(scene).toBeLessThan(pan)
+  })
+
+  it('still sends the XU reset trigger, which is harmless and may help other firmware', async () => {
+    const { svc, xu } = makeReset()
+    await svc.reset('/dev/video1')
+    expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'reset' })
+  })
+
+  it('nudges pan/tilt so a write matching the stale cache still reaches the camera', async () => {
+    // AI tracking and scene modes move the gimbal without updating the v4l2
+    // core's cached value, and the core skips a SET equal to its cache unless
+    // the control sets EXECUTE_ON_WRITE -- which pan_absolute does not.
+    const { svc, calls } = makeReset()
+    await svc.reset('/dev/video1')
+    expect(calls.filter((c) => c.startsWith('pan_absolute'))).toEqual(['pan_absolute=-3600', 'pan_absolute=0'])
+  })
+
+  it('leaves image controls alone', async () => {
+    const { svc, calls } = makeReset()
+    await svc.reset('/dev/video1')
+    expect(calls.some((c) => c.startsWith('brightness'))).toBe(false)
+  })
+
+  it('recenters even when the control ranges cannot be read', async () => {
+    const { svc, v4l2, calls } = makeReset()
+    v4l2.getControls.mockRejectedValue(new Error('EBUSY'))
+    await svc.reset('/dev/video1')
+    expect(calls).toContain('pan_absolute=0')
+    expect(calls).toContain('tilt_absolute=0')
+  })
+
+  it('wakes the camera before recentering it', async () => {
+    const order: string[] = []
+    const waker = { ensureAwake: vi.fn(async () => { order.push('wake') }) }
+    const v4l2 = {
+      listDevices: vi.fn(),
+      getControls: vi.fn(async () => { order.push('getControls'); return ptz }),
+      setControl: vi.fn(async () => { order.push('setControl') }),
+    } as any
+    const xu = { send: vi.fn(async () => { order.push('xu') }) } as any
+    const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 0 }, waker)
+    await svc.reset('/dev/video1')
+    expect(order[0]).toBe('wake')
+  })
+})
+
+describe('CameraService.reset waits out the scene transition', () => {
+  it('does not write pan/tilt until the scene transition has settled', async () => {
+    // Leaving a scene moves the gimbal, and a pan/tilt write landing during
+    // that move is discarded by the firmware.
+    const events: string[] = []
+    const v4l2 = {
+      listDevices: vi.fn(),
+      getControls: vi.fn().mockResolvedValue([]),
+      setControl: vi.fn(async (_d: string, n: string) => { events.push(`set:${n}`) }),
+    } as any
+    const xu = { send: vi.fn(async (_d: string, c: any) => { events.push(`xu:${c.kind}`) }) } as any
+    const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 40 })
+    const done = svc.reset('/dev/video1')
+    await new Promise((r) => setTimeout(r, 10))
+    expect(events.filter((e) => e.startsWith('set:'))).toEqual([])
+    await done
+    expect(events.filter((e) => e.startsWith('set:')).length).toBeGreaterThan(0)
+  })
+})

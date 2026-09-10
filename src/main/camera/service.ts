@@ -3,6 +3,14 @@ import type { V4l2Adapter } from './v4l2.js'
 import type { XuAdapter } from './xu.js'
 import { PresetStore, type AppPreset } from './presets.js'
 
+/** Keeps the camera awake so control writes are not silently dropped. */
+export interface Waker {
+  ensureAwake(dev: string): Promise<void>
+}
+
+/** Used when no waker is supplied (tests): assume the camera is already awake. */
+const noopWaker: Waker = { ensureAwake: async () => {} }
+
 export class CameraService {
   /** Time to let a scene transition (DeskView etc.) finish before replaying zoom. */
   private sceneSettleMs: number
@@ -12,6 +20,7 @@ export class CameraService {
     private xu: XuAdapter,
     private presets: PresetStore,
     opts: { sceneSettleMs?: number } = {},
+    private waker: Waker = noopWaker,
   ) {
     this.sceneSettleMs = opts.sceneSettleMs ?? 1500
   }
@@ -31,24 +40,88 @@ export class CameraService {
     return this.v4l2.getControls(dev)
   }
 
-  setControl(dev: string, name: string, value: number): Promise<void> {
+  // Every command below physically drives the camera, and a v4l2/XU write only
+  // holds the device open for ~25ms — too short to wake a sleeping Link, which
+  // drops the command without reporting any error. Wake first, then write.
+
+  async setControl(dev: string, name: string, value: number): Promise<void> {
+    await this.waker.ensureAwake(dev)
     return this.v4l2.setControl(dev, name, value)
   }
 
-  setAi(dev: string, on: boolean): Promise<void> {
+  async setAi(dev: string, on: boolean): Promise<void> {
+    await this.waker.ensureAwake(dev)
     return this.xu.send(dev, { kind: 'ai', on })
   }
 
-  setFraming(dev: string, mode: AiFraming): Promise<void> {
+  async setFraming(dev: string, mode: AiFraming): Promise<void> {
+    await this.waker.ensureAwake(dev)
     return this.xu.send(dev, { kind: 'framing', mode })
   }
 
-  setScene(dev: string, scene: Scene): Promise<void> {
+  async setScene(dev: string, scene: Scene): Promise<void> {
+    await this.waker.ensureAwake(dev)
     return this.xu.send(dev, { kind: 'scene', scene })
   }
 
-  reset(dev: string): Promise<void> {
-    return this.xu.send(dev, { kind: 'reset' })
+  /**
+   * Recenter the gimbal.
+   *
+   * The XU gimbal-reset trigger alone does not do this. On a Link 2 Pro the
+   * control is well-formed and accepted -- unit 9 selector 14 reports GET_LEN=1
+   * and GET_INFO=SET-only, and the ioctl returns success -- but with the camera
+   * parked 50 deg off-center nothing moved for the following 10s. A scene mode
+   * additionally makes the camera ignore pan/tilt writes altogether. So home
+   * means: clear the scene, then drive pan/tilt home ourselves. The trigger is
+   * still sent first; it is harmless and may be honoured by other firmware.
+   */
+  async reset(dev: string): Promise<void> {
+    await this.waker.ensureAwake(dev)
+    await this.xu.send(dev, { kind: 'reset' })
+    await this.xu.send(dev, { kind: 'scene', scene: 'normal' })
+    // Leaving a scene is a gimbal move of its own, and pan/tilt written while
+    // it is still in progress is discarded -- measured: a reset() that issued
+    // its writes 128ms after the scene command left the camera exactly where
+    // it was parked. Let the transition finish first, as preset recall does.
+    if (this.sceneSettleMs > 0) await new Promise((r) => setTimeout(r, this.sceneSettleMs))
+    const ranges = await this.readRanges(dev)
+    for (const name of ['pan_absolute', 'tilt_absolute']) {
+      try {
+        await this.setNudged(dev, ranges, name, ranges.get(name)?.default ?? 0)
+      } catch (err) {
+        console.error(`reset: failed to center ${name}`, err)
+      }
+    }
+  }
+
+  /**
+   * Control descriptors keyed by name, for step/min/default lookups. Best
+   * effort: an unreadable device yields an empty map so callers still write.
+   */
+  private async readRanges(dev: string): Promise<Map<string, Control>> {
+    const ranges = new Map<string, Control>()
+    try {
+      for (const c of await this.v4l2.getControls(dev)) ranges.set(c.name, c)
+    } catch (err) {
+      console.error('readRanges: failed to read control ranges', err)
+    }
+    return ranges
+  }
+
+  /**
+   * Write a position control so the value definitely reaches the hardware.
+   * The v4l2 control framework does not pass a SET to the driver when the new
+   * value equals its cached one, and pan/tilt/zoom carry no EXECUTE_ON_WRITE
+   * flag -- while XU commands (AI tracking, scene modes) move the gimbal
+   * without updating that cache. Writing target-∓step first guarantees the pair
+   * differs from whatever was cached, so the target write always lands.
+   */
+  private async setNudged(dev: string, ranges: Map<string, Control>, k: string, v: number): Promise<void> {
+    const c = ranges.get(k)
+    const step = Math.max(1, c?.step ?? 1)
+    const nudge = c?.min !== undefined && v - step < c.min ? v + step : v - step
+    await this.v4l2.setControl(dev, k, nudge)
+    await this.v4l2.setControl(dev, k, v)
   }
 
   listAppPresets(deviceId: string): AppPreset[] {
@@ -76,6 +149,7 @@ export class CameraService {
   ): Promise<{ failed: string[]; mode: CameraMode; framing?: AiFraming }> {
     const preset = this.presets.list(deviceId).find((p) => p.name === name)
     if (!preset) throw new Error(`unknown preset: ${name}`)
+    await this.waker.ensureAwake(dev)
     const mode: CameraMode = preset.mode ?? 'normal'
 
     // Silence AI tracking / scene modes first: they drive the gimbal outside
@@ -89,12 +163,8 @@ export class CameraService {
       }
     }
 
-    // The kernel's v4l2 control framework caches control values and silently
-    // drops a SET whose value equals the cache — but XU commands (AI tracking,
-    // scene modes, gimbal reset) move the camera without updating that cache.
-    // For position controls, write target∓step first, then the target: the
-    // pair always differs from the cache, so both writes reach the hardware
-    // and the gimbal really ends up at the saved position.
+    // Position controls go through setNudged so a value matching the stale
+    // cache still reaches the hardware.
     //
     // Scene-mode presets skip the pan/tilt replay: the scene command aims the
     // gimbal itself, and pan/tilt cached while a scene was active are stale by
@@ -103,21 +173,9 @@ export class CameraService {
     // transition resets zoom to its own default).
     const POSITION = new Set(['pan_absolute', 'tilt_absolute', 'zoom_absolute'])
     const isScenePreset = mode !== 'normal' && mode !== 'ai'
-    const ranges = new Map<string, Control>()
-    try {
-      for (const c of await this.v4l2.getControls(dev)) ranges.set(c.name, c)
-    } catch (err) {
-      console.error('applyAppPreset: failed to read control ranges', err)
-    }
-
+    const ranges = await this.readRanges(dev)
     const failed: string[] = []
-    const setNudged = async (k: string, v: number) => {
-      const c = ranges.get(k)
-      const step = Math.max(1, c?.step ?? 1)
-      const nudge = c?.min !== undefined && v - step < c.min ? v + step : v - step
-      await this.v4l2.setControl(dev, k, nudge)
-      await this.v4l2.setControl(dev, k, v)
-    }
+    const setNudged = (k: string, v: number) => this.setNudged(dev, ranges, k, v)
 
     const entries = Object.entries(preset.values).filter(([k]) => !(isScenePreset && POSITION.has(k)))
     // Image controls first, then pan/tilt, then zoom last (zoom belongs to the

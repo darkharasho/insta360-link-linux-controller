@@ -4,6 +4,7 @@ import path from 'node:path'
 import Store from 'electron-store'
 import electronUpdater from 'electron-updater'
 import { V4l2Adapter } from './camera/v4l2.js'
+import { DeviceWaker } from './camera/wake.js'
 import { XuAdapter } from './camera/xu.js'
 import { PresetStore, type AppPreset } from './camera/presets.js'
 import { CameraService } from './camera/service.js'
@@ -38,6 +39,9 @@ function registerWindowControls() {
   ipcMain.on('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
 }
 
+// Held at module scope so before-quit can drop any open camera handle.
+const waker = new DeviceWaker()
+
 function buildService(): CameraService {
   const store = new Store<{ presets: Record<string, AppPreset[]> }>({ defaults: { presets: {} }})
   const backend = new Map<string, AppPreset[]>(Object.entries(store.get('presets')))
@@ -60,7 +64,7 @@ function buildService(): CameraService {
       return typeof val === 'function' ? val.bind(target) : val
     },
   }) as PresetStore
-  return new CameraService(new V4l2Adapter(), new XuAdapter(resolveLinkXu()), wrapped)
+  return new CameraService(new V4l2Adapter(), new XuAdapter(resolveLinkXu()), wrapped, {}, waker)
 }
 
 function createWindow() {
@@ -103,6 +107,9 @@ app.whenReady().then(() => {
 })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('before-quit', () => vcam.stop())
+// Drop any handle held open to keep the camera awake, so the activity LED
+// goes out and the node is fully released when the app exits.
+app.on('before-quit', () => { void waker.releaseAll() })
 // A terminal SIGINT/SIGTERM must still run before-quit so the vcam ffmpeg
 // child is stopped with the app instead of briefly outliving it.
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => app.quit())

@@ -13,6 +13,10 @@ interface Props {
   className?: string
 }
 
+// Every hold target uses pointer events, not mouse+touch: a mixed pair
+// double-fires start on a touch device, and neither onMouseUp nor
+// onTouchEnd arrives if the press ends outside the button, leaving the
+// repeat interval running.
 const REPEAT_MS = 80
 
 /**
@@ -208,11 +212,10 @@ export function PtzPad({ controls, setControl, className }: Props) {
           size="icon"
           disabled={!zoom}
           aria-label="Zoom out"
-          onMouseDown={zoomOut.start}
-          onMouseUp={zoomOut.stop}
-          onMouseLeave={zoomOut.stop}
-          onTouchStart={zoomOut.start}
-          onTouchEnd={zoomOut.stop}
+          onPointerDown={zoomOut.start}
+          onPointerUp={zoomOut.stop}
+          onPointerLeave={zoomOut.stop}
+          onPointerCancel={zoomOut.stop}
         >
           <ZoomOut className="h-4 w-4" />
         </Button>
@@ -230,11 +233,10 @@ export function PtzPad({ controls, setControl, className }: Props) {
           size="icon"
           disabled={!zoom}
           aria-label="Zoom in"
-          onMouseDown={zoomIn.start}
-          onMouseUp={zoomIn.stop}
-          onMouseLeave={zoomIn.stop}
-          onTouchStart={zoomIn.start}
-          onTouchEnd={zoomIn.stop}
+          onPointerDown={zoomIn.start}
+          onPointerUp={zoomIn.stop}
+          onPointerLeave={zoomIn.stop}
+          onPointerCancel={zoomIn.stop}
         >
           <ZoomIn className="h-4 w-4" />
         </Button>
