@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { Device, Control } from '../../shared/types.js'
 import { parseControls } from './v4l2-parse.js'
-import { listControlsArgv, setControlArgv } from './v4l2-argv.js'
+import { listControlsArgv, setControlsArgv } from './v4l2-argv.js'
 import { listCameraDevices, type SysfsIo } from './sysfs.js'
 
 const pExecFile = promisify(execFile)
@@ -19,6 +19,10 @@ export class V4l2Adapter {
     return parseControls(await this.run('v4l2-ctl', listControlsArgv(dev)))
   }
   async setControl(dev: string, name: string, value: number): Promise<void> {
-    await this.run('v4l2-ctl', setControlArgv(dev, name, value))
+    await this.setControls(dev, [[name, value]])
+  }
+  /** Write several controls atomically, in one VIDIOC_S_EXT_CTRLS. */
+  async setControls(dev: string, entries: Array<[string, number]>): Promise<void> {
+    await this.run('v4l2-ctl', setControlsArgv(dev, entries))
   }
 }

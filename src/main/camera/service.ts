@@ -11,6 +11,10 @@ export interface Waker {
 /** Used when no waker is supplied (tests): assume the camera is already awake. */
 const noopWaker: Waker = { ensureAwake: async () => {} }
 
+const PAN = 'pan_absolute'
+const TILT = 'tilt_absolute'
+const isPtz = (name: string) => name === PAN || name === TILT
+
 export class CameraService {
   /** Time to let a scene transition (DeskView etc.) finish before replaying zoom. */
   private sceneSettleMs: number
@@ -46,6 +50,7 @@ export class CameraService {
 
   async setControl(dev: string, name: string, value: number): Promise<void> {
     await this.waker.ensureAwake(dev)
+    if (isPtz(name)) return this.setPosition(dev, await this.ptzRanges(dev), name, value, false)
     return this.v4l2.setControl(dev, name, value)
   }
 
@@ -117,11 +122,69 @@ export class CameraService {
    * differs from whatever was cached, so the target write always lands.
    */
   private async setNudged(dev: string, ranges: Map<string, Control>, k: string, v: number): Promise<void> {
-    const c = ranges.get(k)
-    const step = Math.max(1, c?.step ?? 1)
-    const nudge = c?.min !== undefined && v - step < c.min ? v + step : v - step
+    if (isPtz(k)) return this.setPosition(dev, ranges, k, v)
+    const [nudge, target] = this.nudgePair(ranges.get(k), v)
     await this.v4l2.setControl(dev, k, nudge)
-    await this.v4l2.setControl(dev, k, v)
+    await this.v4l2.setControl(dev, k, target)
+  }
+
+  /** target-+step then target -- see setNudged. */
+  private nudgePair(c: Control | undefined, v: number): [number, number] {
+    const step = Math.max(1, c?.step ?? 1)
+    return [c?.min !== undefined && v - step < c.min ? v + step : v - step, v]
+  }
+
+  /**
+   * Move one axis of the gimbal.
+   *
+   * pan_absolute and tilt_absolute are two halves of a single 8-byte UVC
+   * PanTilt control, so writing one alone is a read-modify-write: the driver
+   * fills the other half from GET_CUR. A Link 2 that has not been driven since
+   * plug-in answers that read with junk far outside the tilt range, and the
+   * kernel then rejects the whole write with ERANGE -- "Numerical result out of
+   * range" -- no matter how valid the value we asked for. Writing both halves
+   * in one ioctl removes the read, so the first move after plug-in lands.
+   *
+   * The sibling comes from what we last asked for rather than from the camera,
+   * which has no trustworthy position feedback; it is seeded from the (already
+   * sanitised) reported value the first time we touch a device.
+   */
+  private async setPosition(
+    dev: string, ranges: Map<string, Control>, axis: string, v: number, nudged = true,
+  ): Promise<void> {
+    const pos = this.seedPosition(dev, ranges)
+    const [nudge, target] = this.nudgePair(ranges.get(axis), v)
+    // Interactive PTZ skips the nudge: each drag step is a new value anyway, so
+    // the cache cannot swallow it, and a back-step before every move is jitter.
+    for (const value of nudged ? [nudge, target] : [target]) {
+      await this.v4l2.setControls(dev, axis === PAN
+        ? [[PAN, value], [TILT, pos[TILT]]]
+        : [[PAN, pos[PAN]], [TILT, value]])
+    }
+    pos[axis] = target
+  }
+
+  /** Last pan/tilt we asked each device for. See setPosition. */
+  private positions = new Map<string, Record<string, number>>()
+
+  private seedPosition(dev: string, ranges: Map<string, Control>): Record<string, number> {
+    let pos = this.positions.get(dev)
+    if (!pos) {
+      pos = { [PAN]: ranges.get(PAN)?.value ?? 0, [TILT]: ranges.get(TILT)?.value ?? 0 }
+      this.positions.set(dev, pos)
+    }
+    return pos
+  }
+
+  /** Control ranges are fixed by firmware, so the PTZ hot path reads them once. */
+  private rangeCache = new Map<string, Map<string, Control>>()
+
+  private async ptzRanges(dev: string): Promise<Map<string, Control>> {
+    const hit = this.rangeCache.get(dev)
+    if (hit) return hit
+    const ranges = await this.readRanges(dev)
+    if (ranges.size > 0) this.rangeCache.set(dev, ranges)
+    return ranges
   }
 
   listAppPresets(deviceId: string): AppPreset[] {

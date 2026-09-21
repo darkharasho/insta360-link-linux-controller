@@ -3,7 +3,12 @@ import { CameraService } from './service'
 import { PresetStore } from './presets'
 
 function makeService() {
-  const v4l2 = { listDevices: vi.fn(), getControls: vi.fn(), setControl: vi.fn().mockResolvedValue(undefined) } as any
+  const v4l2 = {
+    listDevices: vi.fn(),
+    getControls: vi.fn(),
+    setControl: vi.fn().mockResolvedValue(undefined),
+    setControls: vi.fn().mockResolvedValue(undefined),
+  } as any
   const xu = { send: vi.fn().mockResolvedValue(undefined) } as any
   const presets = new PresetStore()
   const svc = new CameraService(v4l2, xu, presets, { sceneSettleMs: 0 })
@@ -89,7 +94,7 @@ describe('CameraService', () => {
     expect(xu.send).toHaveBeenCalledWith('/dev/video1', { kind: 'framing', mode: 'full' })
     // ai on must come after the position replay
     const aiOrder = xu.send.mock.invocationCallOrder[1]
-    const lastSet = v4l2.setControl.mock.invocationCallOrder.at(-1)!
+    const lastSet = v4l2.setControls.mock.invocationCallOrder.at(-1)!
     expect(aiOrder).toBeGreaterThan(lastSet)
     expect(result).toMatchObject({ mode: 'ai', framing: 'full' })
   })
@@ -112,10 +117,13 @@ describe('CameraService', () => {
     const calls = v4l2.setControl.mock.calls.map((c: unknown[]) => [c[1], c[2]])
     expect(calls).toEqual([
       ['brightness', 60],
-      ['pan_absolute', 7200 - 3600],
-      ['pan_absolute', 7200],
       ['zoom_absolute', 249],
       ['zoom_absolute', 250],
+    ])
+    // pan/tilt are one UVC control: both halves always go out together.
+    expect(v4l2.setControls.mock.calls.map((c: unknown[]) => c[1])).toEqual([
+      [['pan_absolute', 7200 - 3600], ['tilt_absolute', 0]],
+      [['pan_absolute', 7200], ['tilt_absolute', 0]],
     ])
   })
   it('clamps the nudge value at the control minimum', async () => {
@@ -170,6 +178,7 @@ describe('CameraService wakes the camera before driving it', () => {
       listDevices: vi.fn(),
       getControls: vi.fn().mockResolvedValue([]),
       setControl: vi.fn(async () => { order.push('setControl') }),
+      setControls: vi.fn(async () => { order.push('setControl') }),
     } as any
     const xu = { send: vi.fn(async () => { order.push('xu') }) } as any
     const presets = new PresetStore()
@@ -182,6 +191,35 @@ describe('CameraService wakes the camera before driving it', () => {
     await svc.setControl('/dev/video1', 'pan_absolute', 3600)
     expect(waker.ensureAwake).toHaveBeenCalledWith('/dev/video1')
     expect(order).toEqual(['wake', 'setControl'])
+  })
+
+  it('writes pan and tilt together, so the driver never reads the camera position', async () => {
+    // pan_absolute and tilt_absolute are two halves of one 8-byte UVC PanTilt
+    // control. Writing one alone makes the driver fill the other from GET_CUR,
+    // which a freshly plugged Link 2 answers with junk -- and the kernel then
+    // rejects the whole write with ERANGE, however valid our own value was.
+    const { svc, v4l2 } = makeWoken()
+    v4l2.getControls.mockResolvedValue([
+      { name: 'pan_absolute', kind: 'int', value: 0, min: -522000, max: 522000, step: 3600, inactive: false },
+      { name: 'tilt_absolute', kind: 'int', value: 36000, min: -324000, max: 360000, step: 3600, inactive: false },
+    ])
+    await svc.setControl('/dev/video1', 'pan_absolute', 7200)
+    expect(v4l2.setControls).toHaveBeenCalledWith('/dev/video1', [
+      ['pan_absolute', 7200], ['tilt_absolute', 36000],
+    ])
+    expect(v4l2.setControl).not.toHaveBeenCalled()
+
+    // The sibling then follows what we last asked for, not what the camera says.
+    await svc.setControl('/dev/video1', 'tilt_absolute', -3600)
+    expect(v4l2.setControls).toHaveBeenLastCalledWith('/dev/video1', [
+      ['pan_absolute', 7200], ['tilt_absolute', -3600],
+    ])
+  })
+
+  it('leaves non-position controls as single writes', async () => {
+    const { svc, v4l2 } = makeWoken()
+    await svc.setControl('/dev/video1', 'brightness', 60)
+    expect(v4l2.setControl).toHaveBeenCalledWith('/dev/video1', 'brightness', 60)
   })
 
   it('wakes before a gimbal reset', async () => {
@@ -232,6 +270,9 @@ describe('CameraService.reset actually recenters the gimbal', () => {
       listDevices: vi.fn(),
       getControls: vi.fn().mockResolvedValue(ptz),
       setControl: vi.fn(async (_d: string, n: string, v: number) => { calls.push(`${n}=${v}`) }),
+      setControls: vi.fn(async (_d: string, e: Array<[string, number]>) => {
+        calls.push(e.map(([n, v]) => `${n}=${v}`).join(','))
+      }),
     } as any
     const xu = { send: vi.fn(async (_d: string, c: any) => { calls.push(`xu:${c.kind}${c.scene ? ':' + c.scene : ''}`) }) } as any
     const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 0 })
@@ -241,15 +282,14 @@ describe('CameraService.reset actually recenters the gimbal', () => {
   it('drives pan and tilt to their defaults instead of trusting the XU trigger', async () => {
     const { svc, calls } = makeReset()
     await svc.reset('/dev/video1')
-    expect(calls).toContain('pan_absolute=0')
-    expect(calls).toContain('tilt_absolute=0')
+    expect(calls.at(-1)).toBe('pan_absolute=0,tilt_absolute=0')
   })
 
   it('clears any active scene before writing pan/tilt, which a scene would ignore', async () => {
     const { svc, calls } = makeReset()
     await svc.reset('/dev/video1')
     const scene = calls.indexOf('xu:scene:normal')
-    const pan = calls.findIndex((c) => c.startsWith('pan_absolute'))
+    const pan = calls.findIndex((c) => c.includes('pan_absolute'))
     expect(scene).toBeGreaterThanOrEqual(0)
     expect(scene).toBeLessThan(pan)
   })
@@ -266,7 +306,12 @@ describe('CameraService.reset actually recenters the gimbal', () => {
     // the control sets EXECUTE_ON_WRITE -- which pan_absolute does not.
     const { svc, calls } = makeReset()
     await svc.reset('/dev/video1')
-    expect(calls.filter((c) => c.startsWith('pan_absolute'))).toEqual(['pan_absolute=-3600', 'pan_absolute=0'])
+    expect(calls.filter((c) => c.includes('='))).toEqual([
+      'pan_absolute=-3600,tilt_absolute=36000',
+      'pan_absolute=0,tilt_absolute=36000',
+      'pan_absolute=0,tilt_absolute=-3600',
+      'pan_absolute=0,tilt_absolute=0',
+    ])
   })
 
   it('leaves image controls alone', async () => {
@@ -279,8 +324,7 @@ describe('CameraService.reset actually recenters the gimbal', () => {
     const { svc, v4l2, calls } = makeReset()
     v4l2.getControls.mockRejectedValue(new Error('EBUSY'))
     await svc.reset('/dev/video1')
-    expect(calls).toContain('pan_absolute=0')
-    expect(calls).toContain('tilt_absolute=0')
+    expect(calls).toContain('pan_absolute=0,tilt_absolute=0')
   })
 
   it('wakes the camera before recentering it', async () => {
@@ -290,6 +334,7 @@ describe('CameraService.reset actually recenters the gimbal', () => {
       listDevices: vi.fn(),
       getControls: vi.fn(async () => { order.push('getControls'); return ptz }),
       setControl: vi.fn(async () => { order.push('setControl') }),
+      setControls: vi.fn(async () => { order.push('setControl') }),
     } as any
     const xu = { send: vi.fn(async () => { order.push('xu') }) } as any
     const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 0 }, waker)
@@ -307,6 +352,7 @@ describe('CameraService.reset waits out the scene transition', () => {
       listDevices: vi.fn(),
       getControls: vi.fn().mockResolvedValue([]),
       setControl: vi.fn(async (_d: string, n: string) => { events.push(`set:${n}`) }),
+      setControls: vi.fn(async (_d: string, e: Array<[string, number]>) => { events.push(`set:${e[0][0]}`) }),
     } as any
     const xu = { send: vi.fn(async (_d: string, c: any) => { events.push(`xu:${c.kind}`) }) } as any
     const svc = new CameraService(v4l2, xu, new PresetStore(), { sceneSettleMs: 40 })

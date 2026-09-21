@@ -25,4 +25,21 @@ describe('parseControls', () => {
   it('parses camera controls too', () => {
     expect(parseControls(ctrls).find((x) => x.name === 'zoom_absolute')!.max).toBe(400)
   })
+
+  it('replaces an out-of-range reported value with the control default', () => {
+    // A Link 2 that has not been driven since plug-in answers GET_CUR for
+    // pan/tilt with junk; believing it makes the UI think the gimbal is parked
+    // at the far end of its travel.
+    const [pan] = parseControls(
+      '                   pan_absolute 0x009a0908 (int)    : min=-522000 max=522000 step=3600 default=0 value=37362756 flags=has-min-max',
+    )
+    expect(pan.value).toBe(0)
+  })
+
+  it('keeps an in-range value untouched', () => {
+    const [pan] = parseControls(
+      '                   pan_absolute 0x009a0908 (int)    : min=-522000 max=522000 step=3600 default=0 value=-14400 flags=has-min-max',
+    )
+    expect(pan.value).toBe(-14400)
+  })
 })
