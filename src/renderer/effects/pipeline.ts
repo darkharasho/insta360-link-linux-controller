@@ -28,9 +28,9 @@ const FRAME_FILTERS: Record<Exclude<EffectKind, 'blur' | 'none'>, string> = {
 let segmenterPromise: Promise<ImageSegmenter> | null = null
 function getSegmenter(): Promise<ImageSegmenter> {
   segmenterPromise ??= (async () => {
-    const fileset = await FilesetResolver.forVisionTasks('/mediapipe/wasm')
+    const fileset = await FilesetResolver.forVisionTasks('./mediapipe/wasm')
     return ImageSegmenter.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: '/mediapipe/selfie_segmenter.tflite', delegate: 'GPU' },
+      baseOptions: { modelAssetPath: './mediapipe/selfie_segmenter.tflite', delegate: 'GPU' },
       runningMode: 'VIDEO',
       outputCategoryMask: true,
       outputConfidenceMasks: false,
