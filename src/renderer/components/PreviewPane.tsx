@@ -136,44 +136,49 @@ export function PreviewPane({ current, effects, frameSink, enabled, onToggle, cl
     }
   }, [current, enabled])
 
+  // The outer box takes whatever space the layout gives it (it's a size
+  // container); the frame inside is the largest 16:9 box that fits, so the
+  // preview never stretches or crops when the window is resized/fullscreened.
   return (
-    <div className={cn('relative aspect-video w-full overflow-hidden rounded-xl border bg-black', className)}>
-      <video ref={videoRef} autoPlay muted playsInline className="hidden" />
-      <canvas
-        ref={canvasRef}
-        className={cn('h-full w-full object-cover', (!enabled || unavailable) && 'hidden')}
-      />
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={enabled ? 'Turn off preview' : 'Turn on preview'}
-        title={enabled ? 'Turn off preview and release the camera' : 'Turn on preview'}
-        onClick={onToggle}
-        className="absolute right-3 top-3 z-10 h-8 w-8 bg-black/40 text-white opacity-70 hover:bg-black/60 hover:text-white hover:opacity-100"
-      >
-        {enabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-      </Button>
-      {!enabled ? (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary/40 text-center">
-          <VideoOff className="h-8 w-8 text-muted-foreground" />
-          <p className="max-w-xs text-sm text-muted-foreground">
-            Preview off — camera released for other apps; controls still work
-          </p>
-          <Button variant="secondary" size="sm" className="mt-1" onClick={onToggle}>
-            Turn on preview
-          </Button>
-        </div>
-      ) : (
-        unavailable && (
+    <div className={cn('flex min-h-0 min-w-0 items-center justify-center [container-type:size]', className)}>
+      <div className="relative aspect-video w-[min(100cqw,calc(100cqh*16/9))] overflow-hidden rounded-xl border bg-black">
+        <video ref={videoRef} autoPlay muted playsInline className="hidden" />
+        <canvas
+          ref={canvasRef}
+          className={cn('h-full w-full object-cover', (!enabled || unavailable) && 'hidden')}
+        />
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={enabled ? 'Turn off preview' : 'Turn on preview'}
+          title={enabled ? 'Turn off preview and release the camera' : 'Turn on preview'}
+          onClick={onToggle}
+          className="absolute right-3 top-3 z-10 h-8 w-8 bg-black/40 text-white opacity-70 hover:bg-black/60 hover:text-white hover:opacity-100"
+        >
+          {enabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+        </Button>
+        {!enabled ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary/40 text-center">
             <VideoOff className="h-8 w-8 text-muted-foreground" />
             <p className="max-w-xs text-sm text-muted-foreground">
-              Preview unavailable — controls still work
+              Preview off — camera released for other apps; controls still work
             </p>
-            <p className="max-w-sm text-xs text-muted-foreground/70">{unavailable}</p>
+            <Button variant="secondary" size="sm" className="mt-1" onClick={onToggle}>
+              Turn on preview
+            </Button>
           </div>
-        )
-      )}
+        ) : (
+          unavailable && (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary/40 text-center">
+              <VideoOff className="h-8 w-8 text-muted-foreground" />
+              <p className="max-w-xs text-sm text-muted-foreground">
+                Preview unavailable — controls still work
+              </p>
+              <p className="max-w-sm text-xs text-muted-foreground/70">{unavailable}</p>
+            </div>
+          )
+        )}
+      </div>
     </div>
   )
 }
