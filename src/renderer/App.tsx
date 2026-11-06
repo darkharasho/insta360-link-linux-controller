@@ -16,6 +16,10 @@ import type { EffectsConfig } from './effects/pipeline'
 import { NEUTRAL_COLOR, loadColor, saveColor, type ColorCorrection } from './effects/color'
 import { NEUTRAL_ORIENT, loadOrient, saveOrient, type Orientation } from './effects/orient'
 import { OrientationPanel } from './components/OrientationPanel'
+import { FacecamImagePanel } from './components/facecam/FacecamImagePanel'
+import { FacecamQualityPanel } from './components/facecam/FacecamQualityPanel'
+import { FacecamDevicePanel } from './components/facecam/FacecamDevicePanel'
+import { useFacecam } from './useFacecam'
 import { loadPreviewEnabled, savePreviewEnabled } from './preview-pref'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Button } from './components/ui/button'
@@ -26,8 +30,20 @@ export default function App() {
     devices, current, controls, selectDevice, refresh, setControl,
     mode, framing, changeMode, changeFraming, reset, captureCurrent,
     listAppPresets, saveAppPreset, applyAppPreset, removeAppPreset,
-    lastError, dismissError,
+    lastError, dismissError, reportError,
   } = useCamera()
+
+  const isFacecam = current?.family === 'elgato-facecam-4k'
+  const [tab, setTab] = useState('mode')
+  // Tabs differ per camera family; fall back to the first one that exists.
+  useEffect(() => {
+    setTab((t) => (isFacecam ? (t === 'mode' ? 'image' : t) : t === 'quality' || t === 'device' ? 'mode' : t))
+  }, [isFacecam])
+  const facecam = useFacecam(
+    isFacecam && current ? current.captureNode : null,
+    tab === 'device' || tab === 'image',
+    reportError,
+  )
 
   const [effects, setEffects] = useState<EffectsConfig>({
     effect: 'none',
@@ -124,26 +140,39 @@ export default function App() {
         </div>
 
         <aside className="w-80 shrink-0 overflow-y-auto rounded-xl border bg-card p-4">
-          <Tabs defaultValue="mode">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="mode">Mode</TabsTrigger>
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList className={cn('grid w-full', isFacecam ? 'grid-cols-5 [&>button]:px-1 [&>button]:text-xs' : 'grid-cols-4')}>
+              {!isFacecam && <TabsTrigger value="mode">Mode</TabsTrigger>}
               <TabsTrigger value="image">Image</TabsTrigger>
+              {isFacecam && <TabsTrigger value="quality">Quality</TabsTrigger>}
               <TabsTrigger value="effects">Effects</TabsTrigger>
               <TabsTrigger value="presets">Presets</TabsTrigger>
+              {isFacecam && <TabsTrigger value="device">Device</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="mode">
-              <ModeControl
-                mode={mode}
-                framing={framing}
-                onModeChange={changeMode}
-                onFramingChange={changeFraming}
-                disabled={!current}
-              />
-            </TabsContent>
+            {!isFacecam && (
+              <TabsContent value="mode">
+                <ModeControl
+                  mode={mode}
+                  framing={framing}
+                  onModeChange={changeMode}
+                  onFramingChange={changeFraming}
+                  disabled={!current}
+                />
+              </TabsContent>
+            )}
             <TabsContent value="image">
               <div className="flex flex-col gap-6">
-                <ImageSettings controls={controls} setControl={setControl} />
+                {isFacecam ? (
+                  <FacecamImagePanel
+                    controls={controls}
+                    setControl={setControl}
+                    facecam={facecam.state}
+                    setFacecam={facecam.set}
+                  />
+                ) : (
+                  <ImageSettings controls={controls} setControl={setControl} />
+                )}
                 <div className="border-t pt-4">
                   <OrientationPanel orient={effects.orient} onChange={changeOrient} disabled={!current} />
                 </div>
@@ -164,6 +193,21 @@ export default function App() {
                 disabled={!current}
               />
             </TabsContent>
+            {isFacecam && (
+              <TabsContent value="quality">
+                <FacecamQualityPanel facecam={facecam.state} setFacecam={facecam.set} />
+              </TabsContent>
+            )}
+            {isFacecam && (
+              <TabsContent value="device">
+                <FacecamDevicePanel
+                  facecam={facecam.state}
+                  readouts={facecam.readouts}
+                  save={facecam.save}
+                  saving={facecam.saving}
+                />
+              </TabsContent>
+            )}
             <TabsContent value="presets">
               <Presets
                 device={current}

@@ -119,7 +119,13 @@ export async function listCameraDevices(io: SysfsIo = defaultIo): Promise<Device
     const deviceDir = ifaceDir.split('/').slice(0, -1).join('/')
     const readId = (attr: string) =>
       io.readFile(`${deviceDir}/${attr}`).then((s) => s.trim().toLowerCase()).catch(() => undefined)
-    const [vendorId, productId, devnum] = await Promise.all([readId('idVendor'), readId('idProduct'), readId('devnum')])
+    const [vendorId, productId, devnum, serial] = await Promise.all([
+      readId('idVendor'),
+      readId('idProduct'),
+      readId('devnum'),
+      // Case matters for serials, unlike the hex ids.
+      io.readFile(`${deviceDir}/serial`).then((x) => x.trim()).catch(() => undefined),
+    ])
     const family = familyOf(capture.name, vendorId, productId)
     if (!family) continue
     const busId = usbBusInfo(capture.real) ?? ifaceDir
@@ -135,6 +141,7 @@ export async function listCameraDevices(io: SysfsIo = defaultIo): Promise<Device
       ...(productId ? { productId } : {}),
       usbPath: deviceDir,
       ...(devnum ? { devnum } : {}),
+      ...(serial ? { serial } : {}),
     })
   }
   // Identity is keyed by USB model so presets/color follow the camera across

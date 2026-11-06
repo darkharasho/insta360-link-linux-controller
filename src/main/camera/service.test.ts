@@ -375,6 +375,7 @@ describe('CameraService with an Elgato Facecam 4K', () => {
     nodes: [FC, '/dev/video9'],
     usbPath: '/sys/devices/x/8-1.4.3.4',
     devnum: '44',
+    serial: 'A9T9D62710MUGG',
   }
   async function makeFacecamService() {
     const v4l2 = {
@@ -440,7 +441,8 @@ describe('CameraService with an Elgato Facecam 4K', () => {
     await svc.facecamSave(FC)
     expect(facecam.save).toHaveBeenCalledWith(FC, usb)
     await expect(svc.facecamReadouts(FC)).resolves.toMatchObject({ iso: 100 })
-    await expect(svc.facecamState(FC)).resolves.toMatchObject({ firmware: '2.49' })
+    // The USB serial (sysfs) is authoritative; the info block's copy is ambiguous.
+    await expect(svc.facecamState(FC)).resolves.toMatchObject({ firmware: '2.49', serial: 'A9T9D62710MUGG' })
   })
   it('refuses Facecam calls for a Link', async () => {
     const { svc, facecam } = await makeFacecamService()

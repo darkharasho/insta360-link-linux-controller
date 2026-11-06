@@ -23,6 +23,8 @@ export interface Device {
   usbPath?: string
   /** USB device number; changes on every replug. */
   devnum?: string
+  /** USB serial number, when the camera reports one (the Facecam does). */
+  serial?: string
 }
 export interface Control {
   name: string

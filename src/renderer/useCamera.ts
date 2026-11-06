@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Device, Control, AiFraming, Scene, CameraMode } from '../shared/types'
 import { cameraApi } from './api'
 import { makeDebouncer } from './debounce'
+import { framingHome, presetValuesFor } from './preset-values'
 
 function describeError(label: string, err: unknown): string {
   const detail = err instanceof Error ? err.message : String(err)
@@ -129,7 +130,7 @@ export function useCamera() {
       if (!dev) return {}
       try {
         const snap = await cameraApi.getSnapshot(dev)
-        return Object.fromEntries(snap.filter((c) => !c.inactive).map((c) => [c.name, c.value]))
+        return presetValuesFor(current?.family ?? 'insta360-link', snap)
       } catch (err) {
         reportError('Read camera state', err)
         return {}
@@ -155,6 +156,14 @@ export function useCamera() {
       return ok
     },
     reset: async () => {
+      if (current?.family === 'elgato-facecam-4k') {
+        // No gimbal: put the digital crop back to the full, centred frame.
+        const ok = await runMutation('Reset framing', async () => {
+          for (const [name, v] of framingHome(controlsRef.current)) await cameraApi.setControl(dev, name, v)
+        })
+        refresh()
+        return ok
+      }
       const ok = await runMutation('Recenter gimbal', () => cameraApi.reset(dev))
       // The gimbal reset also drops AI/scene modes on the hardware.
       if (ok) setModeState('normal')
@@ -181,6 +190,6 @@ export function useCamera() {
     },
     removeAppPreset: (name: string) =>
       runMutation('Delete preset', () => cameraApi.removeAppPreset(deviceId, name)),
-    lastError, dismissError,
+    lastError, dismissError, reportError,
   }
 }

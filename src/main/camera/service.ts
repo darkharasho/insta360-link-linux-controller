@@ -80,7 +80,10 @@ export class CameraService {
 
   async facecamState(dev: string): Promise<FacecamState> {
     const { adapter, usb } = this.facecamTarget(dev)
-    return adapter.state(dev, usb)
+    const state = await adapter.state(dev, usb)
+    // The USB serial is authoritative; the info block's copy has a stray prefix byte.
+    const serial = this.known.get(dev)?.serial
+    return serial ? { ...state, serial } : state
   }
 
   async facecamSet(dev: string, key: FacecamKey, value: number): Promise<void> {

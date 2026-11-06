@@ -146,7 +146,7 @@ export function Presets({ device, captureCurrent, listAppPresets, saveAppPreset,
 
       <Button variant="outline" disabled={!device} onClick={() => reset()} className="gap-2">
         <RotateCcw className="h-4 w-4" />
-        Recenter gimbal
+        {device?.family === 'elgato-facecam-4k' ? 'Reset framing' : 'Recenter gimbal'}
       </Button>
     </div>
   )

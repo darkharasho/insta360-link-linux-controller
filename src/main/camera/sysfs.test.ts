@@ -65,6 +65,7 @@ const ELGATO_IDS: Record<string, string> = {
   [`${FACECAM_DEV}/idVendor`]: '0fd9\n',
   [`${FACECAM_DEV}/idProduct`]: '0092\n',
   [`${FACECAM_DEV}/devnum`]: '44\n',
+  [`${FACECAM_DEV}/serial`]: 'A9T9D62710MUGG\n',
 }
 
 describe('listCameraDevices: Elgato', () => {
@@ -78,6 +79,7 @@ describe('listCameraDevices: Elgato', () => {
       captureNode: '/dev/video8',
       usbPath: FACECAM_DEV,
       devnum: '44',
+      serial: 'A9T9D62710MUGG',
     })
     expect(d[0].family).toBe('insta360-link')
     expect(d[0].usbPath).toBe(PRO_DEV)
