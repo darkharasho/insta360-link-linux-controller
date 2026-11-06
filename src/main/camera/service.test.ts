@@ -394,11 +394,14 @@ describe('CameraService with an Elgato Facecam 4K', () => {
       save: vi.fn().mockResolvedValue(undefined),
       readouts: vi.fn().mockResolvedValue({ iso: 100, exposure: 333, wbKelvin: 4500, tint: 0 }),
     } as any
+    v4l2.listModes = vi.fn().mockResolvedValue([{ width: 1920, height: 1080, fps: 60 }])
+    v4l2.currentMode = vi.fn().mockResolvedValue({ width: 1280, height: 720, fps: 30 })
     const waker = { ensureAwake: vi.fn().mockResolvedValue(undefined) }
     const presets = new PresetStore()
-    const svc = new CameraService(v4l2, xu, presets, { sceneSettleMs: 0 }, waker, facecam)
+    const holders = vi.fn().mockResolvedValue([] as string[])
+    const svc = new CameraService(v4l2, xu, presets, { sceneSettleMs: 0, findHolders: holders }, waker, facecam)
     await svc.listDevices()
-    return { svc, v4l2, xu, facecam, waker, presets }
+    return { svc, v4l2, xu, facecam, waker, presets, holders }
   }
 
   it('refuses Link-only commands without sending anything', async () => {
@@ -443,5 +446,22 @@ describe('CameraService with an Elgato Facecam 4K', () => {
     const { svc, facecam } = await makeFacecamService()
     await expect(svc.facecamSet('/dev/video1', 'tint', 0)).rejects.toThrow(/not a Facecam/)
     expect(facecam.set).not.toHaveBeenCalled()
+  })
+  it('lists the Facecam video modes', async () => {
+    const { svc } = await makeFacecamService()
+    await expect(svc.listModes(FC)).resolves.toEqual([{ width: 1920, height: 1080, fps: 60 }])
+  })
+  it('reports holders and their mode, reading the mode only when held', async () => {
+    const { svc, v4l2, holders } = await makeFacecamService()
+    await expect(svc.streamUsage(FC)).resolves.toEqual({ holders: [], mode: null })
+    expect(v4l2.currentMode).not.toHaveBeenCalled()
+    holders.mockResolvedValue(['Discord'])
+    await expect(svc.streamUsage(FC)).resolves.toEqual({ holders: ['Discord'], mode: { width: 1280, height: 720, fps: 30 } })
+    expect(holders).toHaveBeenCalledWith(FC)
+  })
+  it('keeps mode listing and usage Facecam-only', async () => {
+    const { svc } = await makeFacecamService()
+    await expect(svc.listModes('/dev/video1')).rejects.toThrow(/not a Facecam/)
+    await expect(svc.streamUsage('/dev/video1')).rejects.toThrow(/not a Facecam/)
   })
 })

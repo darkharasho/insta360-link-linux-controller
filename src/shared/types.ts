@@ -52,3 +52,7 @@ export interface FacecamControl { key: FacecamKey; value: number; min: number; m
 /** Live auto-exposure/AWB state; null = not readable right now. exposure is in 100 µs units. */
 export interface FacecamReadouts { iso: number | null; exposure: number | null; wbKelvin: number | null; tint: number | null }
 export interface FacecamState { firmware: string; serial: string; controls: FacecamControl[] }
+
+export interface VideoMode { width: number; height: number; fps: number }
+/** Who else has the camera open, and the mode it is set to (null when unknown). */
+export interface StreamUsage { holders: string[]; mode: VideoMode | null }

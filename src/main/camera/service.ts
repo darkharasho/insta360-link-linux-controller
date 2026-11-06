@@ -1,6 +1,8 @@
 import type {
   Device, Control, AiFraming, Scene, CameraMode, FacecamKey, FacecamReadouts, FacecamState,
+  StreamUsage, VideoMode,
 } from '../../shared/types.js'
+import { findHolders, procIo } from './stream-usage.js'
 import type { V4l2Adapter } from './v4l2.js'
 import type { XuAdapter } from './xu.js'
 import type { FacecamAdapter, FacecamUsb } from './facecam.js'
@@ -21,16 +23,19 @@ const isPtz = (name: string) => name === PAN || name === TILT
 export class CameraService {
   /** Time to let a scene transition (DeskView etc.) finish before replaying zoom. */
   private sceneSettleMs: number
+  /** Other processes holding a node (see stream-usage.ts). */
+  private holdersOf: (node: string) => Promise<string[]>
 
   constructor(
     private v4l2: V4l2Adapter,
     private xu: XuAdapter,
     private presets: PresetStore,
-    opts: { sceneSettleMs?: number } = {},
+    opts: { sceneSettleMs?: number; findHolders?: (node: string) => Promise<string[]> } = {},
     private waker: Waker = noopWaker,
     private facecam?: FacecamAdapter,
   ) {
     this.sceneSettleMs = opts.sceneSettleMs ?? 1500
+    this.holdersOf = opts.findHolders ?? ((node) => findHolders(node, procIo, process.pid))
   }
 
   async listDevices(): Promise<Device[]> {
@@ -86,6 +91,19 @@ export class CameraService {
   async facecamSave(dev: string): Promise<void> {
     const { adapter, usb } = this.facecamTarget(dev)
     return adapter.save(dev, usb)
+  }
+
+  async listModes(dev: string): Promise<VideoMode[]> {
+    this.facecamTarget(dev)
+    return this.v4l2.listModes(dev)
+  }
+
+  async streamUsage(dev: string): Promise<StreamUsage> {
+    this.facecamTarget(dev)
+    const holders = await this.holdersOf(dev)
+    // G_FMT reports the last-set format even when idle, so only ask when held.
+    const mode = holders.length > 0 ? await this.v4l2.currentMode(dev).catch(() => null) : null
+    return { holders, mode }
   }
 
   async facecamReadouts(dev: string): Promise<FacecamReadouts> {

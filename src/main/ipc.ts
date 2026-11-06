@@ -23,4 +23,6 @@ export function registerIpc(ipcMain: IpcMain, s: CameraService) {
   ipcMain.handle(CH.facecamSet, (_e, dev: string, key: FacecamKey, value: number) => s.facecamSet(dev, key, value))
   ipcMain.handle(CH.facecamSave, (_e, dev: string) => s.facecamSave(dev))
   ipcMain.handle(CH.facecamReadouts, (_e, dev: string) => s.facecamReadouts(dev))
+  ipcMain.handle(CH.listModes, (_e, dev: string) => s.listModes(dev))
+  ipcMain.handle(CH.streamUsage, (_e, dev: string) => s.streamUsage(dev))
 }

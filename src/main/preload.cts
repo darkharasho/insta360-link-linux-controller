@@ -19,6 +19,8 @@ const api: CameraApi = {
   facecamSet: (dev, key, value) => ipcRenderer.invoke(CH.facecamSet, dev, key, value),
   facecamSave: (dev) => ipcRenderer.invoke(CH.facecamSave, dev),
   facecamReadouts: (dev) => ipcRenderer.invoke(CH.facecamReadouts, dev),
+  listModes: (dev) => ipcRenderer.invoke(CH.listModes, dev),
+  streamUsage: (dev) => ipcRenderer.invoke(CH.streamUsage, dev),
   onDevicesChanged: (cb) => {
     const listener = (_e: IpcRendererEvent, devices: Device[]) => cb(devices)
     ipcRenderer.on(EV.devicesChanged, listener)

@@ -1,5 +1,6 @@
 import type {
   Device, Control, AiFraming, Scene, AppPreset, CameraMode, FacecamKey, FacecamReadouts, FacecamState,
+  StreamUsage, VideoMode,
 } from './types.js'
 
 export const CH = {
@@ -18,6 +19,8 @@ export const CH = {
   facecamSet: 'camera:facecamSet',
   facecamSave: 'camera:facecamSave',
   facecamReadouts: 'camera:facecamReadouts',
+  listModes: 'camera:listModes',
+  streamUsage: 'camera:streamUsage',
 } as const
 
 /** Main→renderer push events (no invoke handler, unlike CH channels). */
@@ -52,6 +55,8 @@ export interface CameraApi {
   facecamSet(dev: string, key: FacecamKey, value: number): Promise<void>
   facecamSave(dev: string): Promise<void>
   facecamReadouts(dev: string): Promise<FacecamReadouts>
+  listModes(dev: string): Promise<VideoMode[]>
+  streamUsage(dev: string): Promise<StreamUsage>
   /** Subscribe to hotplug updates; returns an unsubscribe function. */
   onDevicesChanged(cb: (devices: Device[]) => void): () => void
 }

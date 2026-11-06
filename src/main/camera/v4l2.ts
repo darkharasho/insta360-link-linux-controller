@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { Device, Control } from '../../shared/types.js'
+import type { Device, Control, VideoMode } from '../../shared/types.js'
+import { parseFormats, parseCurrentMode } from './formats.js'
 import { parseControls } from './v4l2-parse.js'
 import { listControlsArgv, setControlsArgv } from './v4l2-argv.js'
 import { listCameraDevices, type SysfsIo } from './sysfs.js'
@@ -24,5 +25,13 @@ export class V4l2Adapter {
   /** Write several controls atomically, in one VIDIOC_S_EXT_CTRLS. */
   async setControls(dev: string, entries: Array<[string, number]>): Promise<void> {
     await this.run('v4l2-ctl', setControlsArgv(dev, entries))
+  }
+  /** MJPG capture modes the camera offers. Opens the node (fine for the Facecam). */
+  async listModes(dev: string): Promise<VideoMode[]> {
+    return parseFormats(await this.run('v4l2-ctl', ['-d', dev, '--list-formats-ext']))
+  }
+  /** The format last set on the node — meaningful only while someone holds it. */
+  async currentMode(dev: string): Promise<VideoMode | null> {
+    return parseCurrentMode(await this.run('v4l2-ctl', ['-d', dev, '--get-fmt-video', '--get-parm']))
   }
 }
