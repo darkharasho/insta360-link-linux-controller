@@ -1,4 +1,8 @@
+export type CameraFamily = 'insta360-link' | 'elgato-facecam-4k'
+
 export interface Device {
+  /** Which camera line this is; decides the available commands and UI. */
+  family: CameraFamily
   /** Stable camera identity: usb:<vid>:<pid> for a model seen once, else the
    * port-path busId. Presets and color corrections are keyed by this. */
   id: string
@@ -15,6 +19,10 @@ export interface Device {
   vendorId?: string
   /** USB product id (hex, e.g. "4c04"), when resolvable via udev. */
   productId?: string
+  /** USB device sysfs dir (holds idVendor, descriptors, devnum). */
+  usbPath?: string
+  /** USB device number; changes on every replug. */
+  devnum?: string
 }
 export interface Control {
   name: string

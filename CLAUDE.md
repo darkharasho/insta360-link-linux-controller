@@ -1,6 +1,6 @@
 ## Project Context
 
-A modern, beautiful desktop app for Linux that controls Insta360 Link 1 and 2 webcams — pan/tilt/zoom, AI tracking, and image settings. It reuses the proven v4l2/UVC extension-unit control approach from the original project under the hood, wrapped in a polished modern UI. Packaged and distributed as an auto-updating AppImage via GitHub Actions and Releases.
+A modern, beautiful desktop app for Linux that controls Insta360 Link 1 and 2 webcams (and the Elgato Facecam 4K) — pan/tilt/zoom, AI tracking, and image settings. It reuses the proven v4l2/UVC extension-unit control approach from the original project under the hood, wrapped in a polished modern UI. Packaged and distributed as an auto-updating AppImage via GitHub Actions and Releases.
 
 ## Goals
 
@@ -13,7 +13,7 @@ A modern, beautiful desktop app for Linux that controls Insta360 Link 1 and 2 we
 ## Out of scope
 
 - Windows or macOS support (Linux-focused)
-- Support for non-Insta360 Link cameras
+- Support for cameras other than Insta360 Link 1/2 and the Elgato Facecam 4K
 
 ## Suggested stack
 

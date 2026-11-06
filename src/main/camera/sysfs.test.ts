@@ -52,6 +52,49 @@ function fakeIo(nodes: Record<string, NodeSpec> = NODES, files: Record<string, s
   }
 }
 
+const FACECAM_DEV = `${PCI}/usb8/8-1/8-1.4/8-1.4.3/8-1.4.3.4`
+const WITH_ELGATO: Record<string, NodeSpec> = {
+  ...NODES,
+  video8: { name: 'Elgato Facecam 4K', index: 0, real: `${FACECAM_DEV}/8-1.4.3.4:1.0/video4linux/video8` },
+  video9: { name: 'Elgato Facecam 4K', index: 1, real: `${FACECAM_DEV}/8-1.4.3.4:1.0/video4linux/video9` },
+}
+const ELGATO_IDS: Record<string, string> = {
+  ...USB_IDS,
+  [`${ELGATO_DEV}/idVendor`]: '0fd9\n',
+  [`${ELGATO_DEV}/idProduct`]: '008c\n',
+  [`${FACECAM_DEV}/idVendor`]: '0fd9\n',
+  [`${FACECAM_DEV}/idProduct`]: '0092\n',
+  [`${FACECAM_DEV}/devnum`]: '44\n',
+}
+
+describe('listCameraDevices: Elgato', () => {
+  it('lists the Facecam 4K with its family and USB path, never the Game Capture Neo', async () => {
+    const d = await listCameraDevices(fakeIo(WITH_ELGATO, ELGATO_IDS))
+    expect(d.map((x) => x.label)).toEqual(['Insta360 Link 2 Pro', 'Insta360 Link 2', 'Elgato Facecam 4K'])
+    const fc = d[2]
+    expect(fc).toMatchObject({
+      family: 'elgato-facecam-4k',
+      id: 'usb:0fd9:0092',
+      captureNode: '/dev/video8',
+      usbPath: FACECAM_DEV,
+      devnum: '44',
+    })
+    expect(d[0].family).toBe('insta360-link')
+    expect(d[0].usbPath).toBe(PRO_DEV)
+  })
+  it('drops a Facecam-named device whose product id is not 0092', async () => {
+    const d = await listCameraDevices(
+      fakeIo(WITH_ELGATO, { ...ELGATO_IDS, [`${FACECAM_DEV}/idProduct`]: '0093\n' }),
+    )
+    expect(d.map((x) => x.label)).toEqual(['Insta360 Link 2 Pro', 'Insta360 Link 2'])
+  })
+  it('drops a Facecam whose USB ids are unreadable', async () => {
+    const { [`${FACECAM_DEV}/idProduct`]: _, ...noPid } = ELGATO_IDS
+    const d = await listCameraDevices(fakeIo(WITH_ELGATO, noPid))
+    expect(d.some((x) => x.family === 'elgato-facecam-4k')).toBe(false)
+  })
+})
+
 describe('listCameraDevices', () => {
   it('lists only Insta360 cameras, capture node first by index', async () => {
     const d = await listCameraDevices(fakeIo())

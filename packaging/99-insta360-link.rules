@@ -1,2 +1,6 @@
-# Grant access to Insta360 Link cameras. Reload: sudo udevadm control --reload && sudo udevadm trigger
+# Grant access to supported cameras: Insta360 Link 1/2 and the Elgato Facecam 4K.
+# The Facecam is matched by exact product id so other Elgato devices (e.g. the
+# Game Capture Neo) are left alone.
+# Reload: sudo udevadm control --reload && sudo udevadm trigger
 SUBSYSTEM=="video4linux", ATTRS{idVendor}=="2e1a", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="video4linux", ATTRS{idVendor}=="0fd9", ATTRS{idProduct}=="0092", MODE="0660", TAG+="uaccess"

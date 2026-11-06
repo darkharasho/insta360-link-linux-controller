@@ -3,6 +3,7 @@ import type { Device } from '../../shared/types.js'
 import { DeviceWatcher } from './watcher.js'
 
 const dev = (id: string, node: string): Device => ({
+  family: 'insta360-link',
   id,
   name: 'Insta360 Link 2: Insta360 Link',
   label: 'Insta360 Link 2',

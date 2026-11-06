@@ -3,7 +3,8 @@
 A modern desktop app for Linux that controls Insta360 Link 1 and 2 webcams —
 pan/tilt/zoom, AI tracking, presets, and image settings — via the same
 v4l2/UVC extension-unit approach as the original community controller,
-wrapped in a polished Electron UI.
+wrapped in a polished Electron UI. It also controls the **Elgato Facecam 4K**
+(framing, exposure, color and tint, HDR, noise reduction, save to camera).
 
 ## Installing
 
@@ -20,7 +21,8 @@ wrapped in a polished Electron UI.
 ### Device permissions (udev rule)
 
 The app talks to the camera over `/dev/video*` and USB, which normally
-require root. The AppImage bundles the udev rule as a resource; extract it
+require root. The rule covers the Insta360 Links and the Elgato Facecam 4K.
+The AppImage bundles the udev rule as a resource; extract it
 and install it so your user can access the camera without `sudo`:
 
 ```bash

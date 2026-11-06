@@ -1,5 +1,5 @@
 import { readdir, readFile, realpath } from 'node:fs/promises'
-import type { Device } from '../../shared/types.js'
+import type { CameraFamily, Device } from '../../shared/types.js'
 
 /**
  * Camera discovery via sysfs only. Enumerating with `v4l2-ctl --list-devices`
@@ -22,6 +22,19 @@ const defaultIo: SysfsIo = {
 }
 
 const SYS_V4L = '/sys/class/video4linux'
+
+/** Card-name prefilter; the family is then decided from the USB ids. */
+const CANDIDATE_NAME = /Insta360 Link|Elgato Facecam 4K/i
+
+/**
+ * Supported cameras. The Facecam is matched by exact VID:PID: other Elgato
+ * devices (e.g. the Game Capture Neo, 0fd9:008c) must never be listed.
+ */
+function familyOf(name: string, vendorId?: string, productId?: string): CameraFamily | null {
+  if (/Insta360 Link/i.test(name)) return 'insta360-link'
+  if (vendorId === '0fd9' && productId === '0092') return 'elgato-facecam-4k'
+  return null
+}
 
 interface VideoNode {
   dev: string
@@ -91,7 +104,7 @@ export async function listCameraDevices(io: SysfsIo = defaultIo): Promise<Device
     // our own filtered virtual camera is deliberately named "Insta360 Link
     // Filtered" and would otherwise match the brand filter.
     if (n.virtual) continue
-    if (!/Insta360 Link/i.test(n.name)) continue
+    if (!CANDIDATE_NAME.test(n.name)) continue
     const key = n.real.split('/').slice(0, -2).join('/')
     const group = groups.get(key) ?? []
     group.push(n)
@@ -106,9 +119,12 @@ export async function listCameraDevices(io: SysfsIo = defaultIo): Promise<Device
     const deviceDir = ifaceDir.split('/').slice(0, -1).join('/')
     const readId = (attr: string) =>
       io.readFile(`${deviceDir}/${attr}`).then((s) => s.trim().toLowerCase()).catch(() => undefined)
-    const [vendorId, productId] = await Promise.all([readId('idVendor'), readId('idProduct')])
+    const [vendorId, productId, devnum] = await Promise.all([readId('idVendor'), readId('idProduct'), readId('devnum')])
+    const family = familyOf(capture.name, vendorId, productId)
+    if (!family) continue
     const busId = usbBusInfo(capture.real) ?? ifaceDir
     devices.push({
+      family,
       id: busId,
       busId,
       name: capture.name,
@@ -117,6 +133,8 @@ export async function listCameraDevices(io: SysfsIo = defaultIo): Promise<Device
       nodes: group.map((n) => n.dev),
       ...(vendorId ? { vendorId } : {}),
       ...(productId ? { productId } : {}),
+      usbPath: deviceDir,
+      ...(devnum ? { devnum } : {}),
     })
   }
   // Identity is keyed by USB model so presets/color follow the camera across
