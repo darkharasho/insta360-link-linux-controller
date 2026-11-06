@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Video, VideoOff } from 'lucide-react'
-import type { Device } from '../../shared/types'
+import type { Device, VideoMode } from '../../shared/types'
+import { previewVideoConstraints } from '../preview-mode'
 import { cn } from '../lib/utils'
 import { EffectsPipeline, type EffectsConfig } from '../effects/pipeline'
 import { Button } from './ui/button'
@@ -12,10 +13,19 @@ interface Props {
   /** Off releases the camera stream so other apps can capture from it. */
   enabled: boolean
   onToggle: () => void
+  /** Exact capture mode for the preview; absent = the Link default (720p ideal). */
+  mode?: VideoMode | null
+  /** Called when the camera refuses `mode`, after falling back to the default. */
+  onModeRejected?: () => void
   className?: string
 }
 
-export function PreviewPane({ current, effects, frameSink, enabled, onToggle, className }: Props) {
+export function PreviewPane({ current, effects, frameSink, enabled, onToggle, mode = null, onModeRejected, className }: Props) {
+  const modeKey = mode ? `${mode.width}x${mode.height}@${mode.fps}` : ''
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const rejectedRef = useRef(onModeRejected)
+  rejectedRef.current = onModeRejected
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pipelineRef = useRef<EffectsPipeline | null>(null)
@@ -99,10 +109,22 @@ export function PreviewPane({ current, effects, frameSink, enabled, onToggle, cl
           return
         }
 
-        const open = () =>
-          navigator.mediaDevices.getUserMedia({
-            video: { deviceId: { exact: match.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          })
+        const open = async () => {
+          const want = modeRef.current
+          const get = (m: VideoMode | null) =>
+            navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: match.deviceId }, ...previewVideoConstraints(m) },
+            })
+          if (!want) return get(null)
+          try {
+            return await get(want)
+          } catch (err) {
+            // A saved mode the camera no longer offers: use the default instead.
+            if ((err as DOMException)?.name !== 'OverconstrainedError') throw err
+            rejectedRef.current?.()
+            return get(null)
+          }
+        }
         try {
           stream = await open()
         } catch (err) {
@@ -134,7 +156,7 @@ export function PreviewPane({ current, effects, frameSink, enabled, onToggle, cl
       if (stream) stream.getTracks().forEach((t) => t.stop())
       if (videoRef.current) videoRef.current.srcObject = null
     }
-  }, [current, enabled])
+  }, [current, enabled, modeKey])
 
   // The outer box takes whatever space the layout gives it (it's a size
   // container); the frame inside is the largest 16:9 box that fits, so the

@@ -20,6 +20,9 @@ import { FacecamImagePanel } from './components/facecam/FacecamImagePanel'
 import { FacecamQualityPanel } from './components/facecam/FacecamQualityPanel'
 import { FacecamDevicePanel } from './components/facecam/FacecamDevicePanel'
 import { useFacecam } from './useFacecam'
+import { useFacecamStream } from './useFacecamStream'
+import { PreviewModePicker } from './components/facecam/PreviewModePicker'
+import { usageNotice } from './preview-mode'
 import { loadPreviewEnabled, savePreviewEnabled } from './preview-pref'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs'
 import { Button } from './components/ui/button'
@@ -79,6 +82,10 @@ export default function App() {
     [deviceId],
   )
 
+  const stream = useFacecamStream(current)
+  const hdrOn = facecam.state?.controls.find((c) => c.key === 'hdr')?.value === 1
+  const notice = isFacecam && stream.usage ? usageNotice(stream.usage, hdrOn) : null
+
   const vcam = useVcam()
 
   // Preview off releases the camera stream so other apps can use it while the
@@ -111,7 +118,10 @@ export default function App() {
           <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
           {connected ? 'Connected' : 'No camera'}
         </div>
-        <CameraPicker devices={devices} current={current} onSelect={selectDevice} />
+        <div className="flex items-center gap-2">
+          {isFacecam && <PreviewModePicker modes={stream.modes} value={stream.mode} onChange={stream.setMode} />}
+          <CameraPicker devices={devices} current={current} onSelect={selectDevice} />
+        </div>
       </header>
 
       {lastError && (
@@ -128,7 +138,12 @@ export default function App() {
 
       <main className="flex flex-1 gap-6 overflow-hidden p-6">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
+          {notice && (
+            <div className="rounded-lg border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">{notice}</div>
+          )}
           <PreviewPane
+            mode={isFacecam ? stream.mode : null}
+            onModeRejected={() => stream.setMode(null)}
             current={current}
             effects={effects}
             frameSink={frameSink}
