@@ -45,3 +45,10 @@ export interface AppPreset {
   /** AI framing to restore when mode === 'ai'. */
   framing?: AiFraming
 }
+
+/** Elgato vendor controls the app may write. See src/main/camera/facecam-map.ts. */
+export type FacecamKey = 'metering' | 'tint' | 'hdr' | 'nr2d' | 'nr3d'
+export interface FacecamControl { key: FacecamKey; value: number; min: number; max: number; default: number }
+/** Live auto-exposure/AWB state; null = not readable right now. exposure is in 100 µs units. */
+export interface FacecamReadouts { iso: number | null; exposure: number | null; wbKelvin: number | null; tint: number | null }
+export interface FacecamState { firmware: string; serial: string; controls: FacecamControl[] }
