@@ -45,7 +45,7 @@ export function FacecamDevicePanel({ facecam, readouts, save, saving }: Props) {
         </Button>
         <p className="text-xs text-muted-foreground">
           {saved
-            ? 'Saved — settings will survive replugging.'
+            ? 'Saved to the camera.'
             : 'Stores the current settings in the camera so they stick across replugs and other computers.'}
         </p>
       </Section>

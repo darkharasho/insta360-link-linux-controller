@@ -175,4 +175,6 @@ Readouts only update while the camera is streaming. When idle they hold their la
 
 **Defaults after the update:** 2D NR and 3D NR both default to 30.
 
-**Save to camera / HDR:** pending. This needs a replug and visual check with the owner.
+**Save to camera:** the camera accepts it. `xu-set 7 7 01` exits 0, and the values stay readable right after it (2026-11-05). Persistence across a replug has **not** been verified yet; the release went ahead without that test. To verify: change a few settings, press Save, replug, and read them back.
+
+**HDR:** the toggle writes and reads back 0/1. Whether it visibly changes the picture at 30 fps has not been checked by eye.
