@@ -6,6 +6,7 @@ import electronUpdater from 'electron-updater'
 import { V4l2Adapter } from './camera/v4l2.js'
 import { DeviceWaker } from './camera/wake.js'
 import { XuAdapter } from './camera/xu.js'
+import { FacecamAdapter } from './camera/facecam.js'
 import { PresetStore, type AppPreset } from './camera/presets.js'
 import { CameraService } from './camera/service.js'
 import { DeviceWatcher } from './camera/watcher.js'
@@ -64,7 +65,8 @@ function buildService(): CameraService {
       return typeof val === 'function' ? val.bind(target) : val
     },
   }) as PresetStore
-  return new CameraService(new V4l2Adapter(), new XuAdapter(resolveLinkXu()), wrapped, {}, waker)
+  const xu = new XuAdapter(resolveLinkXu())
+  return new CameraService(new V4l2Adapter(), xu, wrapped, {}, waker, new FacecamAdapter(xu))
 }
 
 function createWindow() {

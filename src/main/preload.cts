@@ -15,6 +15,10 @@ const api: CameraApi = {
   saveAppPreset: (id, name, values, mode, framing) => ipcRenderer.invoke(CH.saveAppPreset, id, name, values, mode, framing),
   applyAppPreset: (dev, id, name) => ipcRenderer.invoke(CH.applyAppPreset, dev, id, name),
   removeAppPreset: (id, name) => ipcRenderer.invoke(CH.removeAppPreset, id, name),
+  facecamState: (dev) => ipcRenderer.invoke(CH.facecamState, dev),
+  facecamSet: (dev, key, value) => ipcRenderer.invoke(CH.facecamSet, dev, key, value),
+  facecamSave: (dev) => ipcRenderer.invoke(CH.facecamSave, dev),
+  facecamReadouts: (dev) => ipcRenderer.invoke(CH.facecamReadouts, dev),
   onDevicesChanged: (cb) => {
     const listener = (_e: IpcRendererEvent, devices: Device[]) => cb(devices)
     ipcRenderer.on(EV.devicesChanged, listener)

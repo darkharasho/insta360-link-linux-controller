@@ -1,4 +1,6 @@
-import type { Device, Control, AiFraming, Scene, AppPreset, CameraMode } from './types.js'
+import type {
+  Device, Control, AiFraming, Scene, AppPreset, CameraMode, FacecamKey, FacecamReadouts, FacecamState,
+} from './types.js'
 
 export const CH = {
   listDevices: 'camera:list',
@@ -12,6 +14,10 @@ export const CH = {
   saveAppPreset: 'camera:saveAppPreset',
   applyAppPreset: 'camera:applyAppPreset',
   removeAppPreset: 'camera:removeAppPreset',
+  facecamState: 'camera:facecamState',
+  facecamSet: 'camera:facecamSet',
+  facecamSave: 'camera:facecamSave',
+  facecamReadouts: 'camera:facecamReadouts',
 } as const
 
 /** Main→renderer push events (no invoke handler, unlike CH channels). */
@@ -41,6 +47,11 @@ export interface CameraApi {
     name: string,
   ): Promise<{ failed: string[]; mode: CameraMode; framing?: AiFraming }>
   removeAppPreset(deviceId: string, name: string): Promise<void>
+  /** Elgato Facecam 4K vendor controls; reject for other cameras. */
+  facecamState(dev: string): Promise<FacecamState>
+  facecamSet(dev: string, key: FacecamKey, value: number): Promise<void>
+  facecamSave(dev: string): Promise<void>
+  facecamReadouts(dev: string): Promise<FacecamReadouts>
   /** Subscribe to hotplug updates; returns an unsubscribe function. */
   onDevicesChanged(cb: (devices: Device[]) => void): () => void
 }

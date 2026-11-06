@@ -1,6 +1,9 @@
-import type { Device, Control, AiFraming, Scene, CameraMode } from '../../shared/types.js'
+import type {
+  Device, Control, AiFraming, Scene, CameraMode, FacecamKey, FacecamReadouts, FacecamState,
+} from '../../shared/types.js'
 import type { V4l2Adapter } from './v4l2.js'
 import type { XuAdapter } from './xu.js'
+import type { FacecamAdapter, FacecamUsb } from './facecam.js'
 import { PresetStore, type AppPreset } from './presets.js'
 
 /** Keeps the camera awake so control writes are not silently dropped. */
@@ -25,6 +28,7 @@ export class CameraService {
     private presets: PresetStore,
     opts: { sceneSettleMs?: number } = {},
     private waker: Waker = noopWaker,
+    private facecam?: FacecamAdapter,
   ) {
     this.sceneSettleMs = opts.sceneSettleMs ?? 1500
   }
@@ -37,7 +41,56 @@ export class CameraService {
     for (const d of devices) {
       if (d.busId && d.busId !== d.id) this.presets.migrate(d.busId, d.id)
     }
+    this.known = new Map(devices.map((d) => [d.captureNode, d]))
     return devices
+  }
+
+  /** Devices from the last discovery, by capture node. */
+  private known = new Map<string, Device>()
+
+  private isFacecam(dev: string): boolean {
+    return this.known.get(dev)?.family === 'elgato-facecam-4k'
+  }
+
+  /** AI tracking, scenes and gimbal reset exist only on the Insta360 Link. */
+  private requireLink(dev: string, what: string): void {
+    if (this.isFacecam(dev)) throw new Error(`${what} is not supported on Elgato Facecam 4K`)
+  }
+
+  /**
+   * The Link drops writes while asleep and must be woken first. The Facecam
+   * applies writes while idle (docs/HARDWARE-TEST.md), so it is never held open.
+   */
+  private async wake(dev: string): Promise<void> {
+    if (!this.isFacecam(dev)) await this.waker.ensureAwake(dev)
+  }
+
+  private facecamTarget(dev: string): { adapter: FacecamAdapter; usb: FacecamUsb } {
+    const d = this.known.get(dev)
+    if (!d || d.family !== 'elgato-facecam-4k' || !d.usbPath || !this.facecam) {
+      throw new Error(`not a Facecam: ${dev}`)
+    }
+    return { adapter: this.facecam, usb: { path: d.usbPath, devnum: d.devnum ?? '' } }
+  }
+
+  async facecamState(dev: string): Promise<FacecamState> {
+    const { adapter, usb } = this.facecamTarget(dev)
+    return adapter.state(dev, usb)
+  }
+
+  async facecamSet(dev: string, key: FacecamKey, value: number): Promise<void> {
+    const { adapter, usb } = this.facecamTarget(dev)
+    return adapter.set(dev, usb, key, value)
+  }
+
+  async facecamSave(dev: string): Promise<void> {
+    const { adapter, usb } = this.facecamTarget(dev)
+    return adapter.save(dev, usb)
+  }
+
+  async facecamReadouts(dev: string): Promise<FacecamReadouts> {
+    const { adapter, usb } = this.facecamTarget(dev)
+    return adapter.readouts(dev, usb)
   }
 
   getSnapshot(dev: string): Promise<Control[]> {
@@ -49,22 +102,25 @@ export class CameraService {
   // drops the command without reporting any error. Wake first, then write.
 
   async setControl(dev: string, name: string, value: number): Promise<void> {
-    await this.waker.ensureAwake(dev)
+    await this.wake(dev)
     if (isPtz(name)) return this.setPosition(dev, await this.ptzRanges(dev), name, value, false)
     return this.v4l2.setControl(dev, name, value)
   }
 
   async setAi(dev: string, on: boolean): Promise<void> {
+    this.requireLink(dev, 'AI tracking')
     await this.waker.ensureAwake(dev)
     return this.xu.send(dev, { kind: 'ai', on })
   }
 
   async setFraming(dev: string, mode: AiFraming): Promise<void> {
+    this.requireLink(dev, 'AI framing')
     await this.waker.ensureAwake(dev)
     return this.xu.send(dev, { kind: 'framing', mode })
   }
 
   async setScene(dev: string, scene: Scene): Promise<void> {
+    this.requireLink(dev, 'Scene mode')
     await this.waker.ensureAwake(dev)
     return this.xu.send(dev, { kind: 'scene', scene })
   }
@@ -81,6 +137,7 @@ export class CameraService {
    * still sent first; it is harmless and may be honoured by other firmware.
    */
   async reset(dev: string): Promise<void> {
+    this.requireLink(dev, 'Gimbal reset')
     await this.waker.ensureAwake(dev)
     await this.xu.send(dev, { kind: 'reset' })
     await this.xu.send(dev, { kind: 'scene', scene: 'normal' })
@@ -212,13 +269,14 @@ export class CameraService {
   ): Promise<{ failed: string[]; mode: CameraMode; framing?: AiFraming }> {
     const preset = this.presets.list(deviceId).find((p) => p.name === name)
     if (!preset) throw new Error(`unknown preset: ${name}`)
-    await this.waker.ensureAwake(dev)
+    await this.wake(dev)
     const mode: CameraMode = preset.mode ?? 'normal'
+    const facecam = this.isFacecam(dev)
 
     // Silence AI tracking / scene modes first: they drive the gimbal outside
     // the v4l2 state and would immediately re-aim the camera mid-recall. For
     // scene presets the scene command itself is sent at the end instead.
-    if (mode === 'normal' || mode === 'ai') {
+    if (!facecam && (mode === 'normal' || mode === 'ai')) {
       try {
         await this.xu.send(dev, { kind: 'scene', scene: 'normal' })
       } catch (err) {
@@ -257,6 +315,8 @@ export class CameraService {
 
     // Restore the saved mode: scene presets enter their scene now; AI presets
     // start tracking from the recalled position, with the saved framing.
+    // The Facecam has no modes: its presets are framing only.
+    if (facecam) return { failed, mode: 'normal' }
     try {
       if (isScenePreset) {
         await this.xu.send(dev, { kind: 'scene', scene: mode })

@@ -39,4 +39,16 @@ describe('ipc channels', () => {
     await handlers[CH.setControl]({}, '/dev/video1', 'zoom_absolute', 300)
     expect(service.setControl).toHaveBeenCalledWith('/dev/video1', 'zoom_absolute', 300)
   })
+  it('has Facecam channels that reach the service', async () => {
+    const handlers: Record<string, Function> = {}
+    const ipcMain = { handle: (ch: string, fn: Function) => { handlers[ch] = fn } }
+    const service = new Proxy({}, { get: (t: any, k) => (t[k] ??= vi.fn().mockResolvedValue(undefined)) }) as any
+    registerIpc(ipcMain as any, service)
+    for (const ch of ['facecamState', 'facecamSet', 'facecamSave', 'facecamReadouts'] as const) {
+      expect(CH[ch]).toBe(`camera:${ch}`)
+      expect(handlers[CH[ch]]).toBeTypeOf('function')
+    }
+    await handlers[CH.facecamSet]({}, '/dev/video8', 'tint', -20)
+    expect(service.facecamSet).toHaveBeenCalledWith('/dev/video8', 'tint', -20)
+  })
 })

@@ -363,3 +363,85 @@ describe('CameraService.reset waits out the scene transition', () => {
     expect(events.filter((e) => e.startsWith('set:')).length).toBeGreaterThan(0)
   })
 })
+
+describe('CameraService with an Elgato Facecam 4K', () => {
+  const FC = '/dev/video8'
+  const facecamDevice = {
+    family: 'elgato-facecam-4k' as const,
+    id: 'usb:0fd9:0092',
+    name: 'Elgato Facecam 4K',
+    label: 'Elgato Facecam 4K',
+    captureNode: FC,
+    nodes: [FC, '/dev/video9'],
+    usbPath: '/sys/devices/x/8-1.4.3.4',
+    devnum: '44',
+  }
+  async function makeFacecamService() {
+    const v4l2 = {
+      listDevices: vi.fn().mockResolvedValue([{ ...device('usb:2e1a:4c06'), family: 'insta360-link' }, facecamDevice]),
+      getControls: vi.fn().mockResolvedValue([
+        { name: 'pan_absolute', kind: 'int', value: 0, min: -5184000, max: 5184000, step: 3600, default: 0, inactive: false },
+        { name: 'tilt_absolute', kind: 'int', value: 0, min: -2916000, max: 2916000, step: 3600, default: 0, inactive: false },
+        { name: 'zoom_absolute', kind: 'int', value: 100, min: 100, max: 400, step: 1, default: 100, inactive: false },
+      ]),
+      setControl: vi.fn().mockResolvedValue(undefined),
+      setControls: vi.fn().mockResolvedValue(undefined),
+    } as any
+    const xu = { send: vi.fn().mockResolvedValue(undefined) } as any
+    const facecam = {
+      state: vi.fn().mockResolvedValue({ firmware: '2.49', serial: 'S', controls: [] }),
+      set: vi.fn().mockResolvedValue(undefined),
+      save: vi.fn().mockResolvedValue(undefined),
+      readouts: vi.fn().mockResolvedValue({ iso: 100, exposure: 333, wbKelvin: 4500, tint: 0 }),
+    } as any
+    const waker = { ensureAwake: vi.fn().mockResolvedValue(undefined) }
+    const presets = new PresetStore()
+    const svc = new CameraService(v4l2, xu, presets, { sceneSettleMs: 0 }, waker, facecam)
+    await svc.listDevices()
+    return { svc, v4l2, xu, facecam, waker, presets }
+  }
+
+  it('refuses Link-only commands without sending anything', async () => {
+    const { svc, xu } = await makeFacecamService()
+    await expect(svc.setAi(FC, true)).rejects.toThrow(/not supported on Elgato Facecam 4K/)
+    await expect(svc.setScene(FC, 'deskview')).rejects.toThrow(/not supported on Elgato Facecam 4K/)
+    await expect(svc.setFraming(FC, 'half')).rejects.toThrow(/not supported on Elgato Facecam 4K/)
+    await expect(svc.reset(FC)).rejects.toThrow(/not supported on Elgato Facecam 4K/)
+    expect(xu.send).not.toHaveBeenCalled()
+  })
+  it('recalls a framing preset with no XU commands, pan/tilt combined, zoom last', async () => {
+    const { svc, xu, v4l2, presets } = await makeFacecamService()
+    presets.save('usb:0fd9:0092', { name: 'Close', values: { zoom_absolute: 200, pan_absolute: 3600 } })
+    const r = await svc.applyAppPreset(FC, 'usb:0fd9:0092', 'Close')
+    expect(r.failed).toEqual([])
+    expect(xu.send).not.toHaveBeenCalled()
+    const panWrites = v4l2.setControls.mock.calls.filter(([, e]: any) => e.some(([n]: any) => n === 'pan_absolute'))
+    expect(panWrites.at(-1)[1]).toEqual([['pan_absolute', 3600], ['tilt_absolute', 0]])
+    const order = v4l2.setControl.mock.calls.map(([, n]: any) => n)
+    expect(order.at(-1)).toBe('zoom_absolute')
+    const lastPan = v4l2.setControls.mock.invocationCallOrder.at(-1)!
+    const lastZoom = v4l2.setControl.mock.invocationCallOrder.at(-1)!
+    expect(lastZoom).toBeGreaterThan(lastPan)
+  })
+  it('does not hold the Facecam open to wake it (writes land while idle)', async () => {
+    const { svc, waker } = await makeFacecamService()
+    await svc.setControl(FC, 'contrast', 120)
+    await svc.facecamSet(FC, 'tint', 10)
+    expect(waker.ensureAwake).not.toHaveBeenCalled()
+  })
+  it('routes vendor controls, save and readouts to the Facecam adapter with its USB identity', async () => {
+    const { svc, facecam } = await makeFacecamService()
+    const usb = { path: '/sys/devices/x/8-1.4.3.4', devnum: '44' }
+    await svc.facecamSet(FC, 'hdr', 1)
+    expect(facecam.set).toHaveBeenCalledWith(FC, usb, 'hdr', 1)
+    await svc.facecamSave(FC)
+    expect(facecam.save).toHaveBeenCalledWith(FC, usb)
+    await expect(svc.facecamReadouts(FC)).resolves.toMatchObject({ iso: 100 })
+    await expect(svc.facecamState(FC)).resolves.toMatchObject({ firmware: '2.49' })
+  })
+  it('refuses Facecam calls for a Link', async () => {
+    const { svc, facecam } = await makeFacecamService()
+    await expect(svc.facecamSet('/dev/video1', 'tint', 0)).rejects.toThrow(/not a Facecam/)
+    expect(facecam.set).not.toHaveBeenCalled()
+  })
+})

@@ -1,7 +1,7 @@
 import type { IpcMain } from 'electron'
 import { CH } from '../shared/ipc.js'
 import type { CameraService } from './camera/service.js'
-import type { AiFraming, Scene, CameraMode } from '../shared/types.js'
+import type { AiFraming, Scene, CameraMode, FacecamKey } from '../shared/types.js'
 
 export function registerIpc(ipcMain: IpcMain, s: CameraService) {
   ipcMain.handle(CH.listDevices, () => s.listDevices())
@@ -19,4 +19,8 @@ export function registerIpc(ipcMain: IpcMain, s: CameraService) {
   )
   ipcMain.handle(CH.applyAppPreset, (_e, dev: string, id: string, name: string) => s.applyAppPreset(dev, id, name))
   ipcMain.handle(CH.removeAppPreset, (_e, id: string, name: string) => s.removeAppPreset(id, name))
+  ipcMain.handle(CH.facecamState, (_e, dev: string) => s.facecamState(dev))
+  ipcMain.handle(CH.facecamSet, (_e, dev: string, key: FacecamKey, value: number) => s.facecamSet(dev, key, value))
+  ipcMain.handle(CH.facecamSave, (_e, dev: string) => s.facecamSave(dev))
+  ipcMain.handle(CH.facecamReadouts, (_e, dev: string) => s.facecamReadouts(dev))
 }
