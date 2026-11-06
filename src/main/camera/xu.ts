@@ -12,4 +12,8 @@ export class XuAdapter {
     const argv = xuArgv(dev, cmd)
     await this.run(this.binPath, argv)
   }
+  /** Run the helper with prebuilt argv (see xuGetArgv/xuSetArgv) and return stdout. */
+  query(argv: string[]): Promise<string> {
+    return this.run(this.binPath, argv)
+  }
 }
