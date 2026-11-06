@@ -6,6 +6,23 @@ v4l2/UVC extension-unit approach as the original community controller,
 wrapped in a polished Electron UI. It also controls the **Elgato Facecam 4K**
 (framing, exposure, color and tint, HDR, noise reduction, save to camera).
 
+## Supported cameras
+
+- **Insta360 Link, Link 2, Link 2 Pro:** pan/tilt/zoom, AI tracking, scene modes (DeskView, Whiteboard, Overhead), presets and image settings.
+- **Elgato Facecam 4K** (`0fd9:0092`), with the camera-side settings Elgato Camera Hub offers:
+  - **Framing:** digital zoom 1–4× with pan/tilt, plus framing presets.
+  - **Exposure:** auto/manual, shutter, gain, metering, anti-flicker, backlight compensation.
+  - **Color:** auto or Kelvin white balance, tint (firmware 2.49+), brightness, contrast, saturation, sharpness.
+  - **Quality:** HDR, and noise reduction presets or custom 2D/3D strength.
+  - **Device:** firmware and serial, live ISO/shutter/white-balance readouts, **Save to camera** so settings survive replugs and other computers.
+  - **Preview:** a resolution/fps picker for this app's preview, and a notice when another app (Discord, a browser…) is using the camera and at what mode.
+
+  Facecam notes:
+  - The lens is fixed-focus (sharp from about 30 cm at 4K).
+  - HDR only takes effect in 30 fps modes.
+  - Other apps pick their own resolution, so this app can't change what Discord receives.
+  - Firmware updates still need Elgato's app on Windows or macOS. Settings that only newer firmware supports appear automatically after an update.
+
 ## Installing
 
 1. Download the latest `Insta360-Link-Controller-*.AppImage` from the
