@@ -155,3 +155,24 @@ and run each command, watching for the described effect. Tick each box.
 - If a command is accepted (exit 0) but produces **no** visible effect on your
   unit, note it here — that would indicate a firmware/model difference worth
   documenting, not a bug in the transcription.
+
+## Elgato Facecam 4K (`0fd9:0092`, firmware 2.49)
+
+Measured 2026-11-05 on the dev machine with `native/link-xu/link-xu <dev> xu-get|xu-set`. The extension units were found by GUID: image `23e49ed0-…3001` = unit 6, device `2c49d16a-…6002` = unit 7.
+
+**Writes land while idle.** With nothing holding the node, `xu-set 6 18 6400` (tint +100) and `xu-set 7 3 2d` (2D NR 45) read back immediately, and again after 1 s. No `0xff` window was observed on this model. The Facecam needs no wake-before-write. A payload whose size differs from GET_LEN is refused by the helper (exit 1).
+
+**Readouts** (image unit, uint32 LE, measured while streaming 1080p30 with manual exposure):
+
+| Sel | Meaning | Evidence |
+|---|---|---|
+| 8 | ISO | gain 0 → 100, gain 40 → 398, gain 120 → 6400 (ISO ≈ 100·2^(gain/20)) |
+| 11 | exposure time, 100 µs units | tracks `exposure_time_absolute` exactly: 50 / 200 / 333 |
+| 17 | white balance, K | ~4100–4300 under room light |
+| 19 | current tint | mirrors sel 18 (100 after writing +100) |
+
+Readouts only update while the camera is streaming. When idle they hold their last value.
+
+**Defaults after the update:** 2D NR and 3D NR both default to 30.
+
+**Save to camera / HDR:** pending. This needs a replug and visual check with the owner.
