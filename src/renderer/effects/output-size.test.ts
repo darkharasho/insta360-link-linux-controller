@@ -25,4 +25,12 @@ describe('outputSize', () => {
   it('falls back to the source size when the canvas has no layout size yet', () => {
     expect(outputSize(1920, 1080, 0, 1)).toEqual({ width: 1920, height: 1080 })
   })
+
+  it('honours a minimum width (vcam) even when the window is small', () => {
+    expect(outputSize(3840, 2160, 800, 1, 1920)).toEqual({ width: 1920, height: 1080 })
+  })
+
+  it('caps the minimum width at the source resolution', () => {
+    expect(outputSize(1280, 720, 800, 1, 1920)).toEqual({ width: 1280, height: 720 })
+  })
 })

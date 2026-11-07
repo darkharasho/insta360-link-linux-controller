@@ -14,11 +14,14 @@ export interface EffectsConfig {
   orient: Orientation
 }
 
-/** Fixed size for segmentation and the virtual-camera sink, which keeps their
- * cost predictable. The visible preview is NOT drawn at this size: it follows
- * the source resolution (see outputSize), so 4K and zoomed feeds stay sharp. */
+/** Fixed size for segmentation, which keeps its cost predictable. The visible
+ * preview is NOT drawn at this size: it follows the source resolution (see
+ * outputSize), so 4K and zoomed feeds stay sharp. */
 export const PIPELINE_WIDTH = 960
 export const PIPELINE_HEIGHT = 540
+/** Virtual-camera output size and rate. */
+export const SINK_WIDTH = 1920
+export const SINK_HEIGHT = 1080
 export const SINK_FPS = 24
 
 /** Blur radii are tuned at PIPELINE_WIDTH; `k` scales them to the output size. */
@@ -65,7 +68,7 @@ export class EffectsPipeline {
   private segmenterFailed = false
 
   private out: CanvasRenderingContext2D
-  /** Pipeline-size copy of the output for the vcam sink's pixel readback. */
+  /** Sink-size copy of the output for the vcam sink's pixel readback. */
   private sinkCanvas = document.createElement('canvas')
   private sinkCtx = this.sinkCanvas.getContext('2d', { willReadFrequently: true })!
   /** Output-size frame the person is cut out of when blurring. */
@@ -88,10 +91,12 @@ export class EffectsPipeline {
   constructor(private video: HTMLVideoElement, private canvas: HTMLCanvasElement) {
     canvas.width = PIPELINE_WIDTH
     canvas.height = PIPELINE_HEIGHT
-    for (const c of [this.bg, this.person, this.maskCanvas, this.sinkCanvas]) {
+    for (const c of [this.bg, this.person, this.maskCanvas]) {
       c.width = PIPELINE_WIDTH
       c.height = PIPELINE_HEIGHT
     }
+    this.sinkCanvas.width = SINK_WIDTH
+    this.sinkCanvas.height = SINK_HEIGHT
     // No willReadFrequently here: that forces a CPU canvas, too slow at 4K.
     // Pixel readback for the sink happens on the small sinkCanvas instead.
     this.out = canvas.getContext('2d')!
@@ -175,7 +180,9 @@ export class EffectsPipeline {
    * canvas clears it, so only do it when the size actually changes. */
   private syncOutputSize() {
     const { canvas, video } = this
-    const s = outputSize(video.videoWidth, video.videoHeight, canvas.clientWidth, window.devicePixelRatio)
+    // While the vcam runs, render at least its width so it gets real pixels.
+    const minWidth = this.sink ? SINK_WIDTH : 0
+    const s = outputSize(video.videoWidth, video.videoHeight, canvas.clientWidth, window.devicePixelRatio, minWidth)
     if (canvas.width === s.width && canvas.height === s.height) return
     canvas.width = this.sharp.width = s.width
     canvas.height = this.sharp.height = s.height
@@ -247,8 +254,9 @@ export class EffectsPipeline {
       const now = performance.now()
       if (now - this.lastSinkAt >= 1000 / SINK_FPS) {
         this.lastSinkAt = now
-        this.sinkCtx.drawImage(this.canvas, 0, 0, w, h)
-        const img = this.sinkCtx.getImageData(0, 0, w, h)
+        this.sinkCtx.imageSmoothingQuality = 'high'
+        this.sinkCtx.drawImage(this.canvas, 0, 0, SINK_WIDTH, SINK_HEIGHT)
+        const img = this.sinkCtx.getImageData(0, 0, SINK_WIDTH, SINK_HEIGHT)
         this.sink(new Uint8Array(img.data.buffer))
       }
     }

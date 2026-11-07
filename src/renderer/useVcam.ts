@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { VcamStatus } from '../shared/vcam-ipc'
 import { vcamApi } from './api'
-import { PIPELINE_WIDTH, PIPELINE_HEIGHT, SINK_FPS } from './effects/pipeline'
+import { SINK_WIDTH, SINK_HEIGHT, SINK_FPS } from './effects/pipeline'
 
 export function useVcam() {
   const [status, setStatus] = useState<VcamStatus | null>(null)
@@ -23,7 +23,7 @@ export function useVcam() {
       if (status?.running) {
         await vcamApi.stop()
       } else {
-        await vcamApi.start(PIPELINE_WIDTH, PIPELINE_HEIGHT, SINK_FPS)
+        await vcamApi.start(SINK_WIDTH, SINK_HEIGHT, SINK_FPS)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
